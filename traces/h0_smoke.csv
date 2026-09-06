@@ -1,0 +1,4 @@
+# arrival_ps,op,address,size_bytes,client
+0,READ,0x0,64,0
+0,READ,0x40,64,1
+5000,WRITE,0x80,128,0

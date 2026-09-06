@@ -1,0 +1,144 @@
+#pragma once
+
+#include "hbmsim/controller/command_planner.h"
+#include "hbmsim/kernel/event_queue.h"
+#include "hbmsim/mapping/address_mapper.h"
+#include "hbmsim/media/bank_state.h"
+#include "hbmsim/timing/timing_engine.h"
+#include "hbmsim/topology.h"
+#include "hbmsim/transaction.h"
+
+#include <deque>
+#include <functional>
+#include <optional>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+
+namespace hbmsim {
+
+struct HbmConfig {
+  HbmTopology topology{};
+  HbmTimingSpec timing{};
+  RowPolicy row_policy = RowPolicy::Open;
+  std::uint64_t channel_bandwidth_bytes_per_ns = 32;
+  std::uint64_t address_interleave_bytes = 64;
+  std::uint32_t columns_per_row = 128;
+  std::uint32_t rows_per_bank = 16'384;
+  std::size_t write_drain_high_watermark = 16;
+  std::size_t write_drain_low_watermark = 4;
+  SimTime refresh_interval = 0;
+  std::uint64_t physical_burst_bytes = 64;
+  // Zero preserves one modelled access per client transaction. A positive
+  // value coalesces contiguous physical bursts into accesses no larger than it.
+  std::uint64_t simulation_access_granularity_bytes = 0;
+
+  void validate() const;
+};
+
+struct ChannelStats {
+  std::uint64_t completed_bytes = 0;
+  SimTime data_bus_busy_time = 0;
+  std::uint64_t refreshes = 0;
+};
+
+struct HbmStats {
+  std::uint64_t submitted_transactions = 0;
+  std::uint64_t completed_transactions = 0;
+  std::uint64_t modeled_accesses = 0;
+  std::uint64_t issued_commands = 0;
+  std::uint64_t read_bytes = 0;
+  std::uint64_t write_bytes = 0;
+  std::uint64_t row_hits = 0;
+  std::uint64_t row_closed = 0;
+  std::uint64_t row_conflicts = 0;
+  std::vector<ChannelStats> channels;
+};
+
+using CompletionCallback = std::function<void(const HbmCompletion&)>;
+
+class HbmSystem {
+ public:
+  explicit HbmSystem(HbmConfig config = {});
+
+  SubmitResult submit(const HbmTransaction& transaction);
+  void set_completion_callback(CompletionCallback callback);
+  void run();
+  void run_until(SimTime until);
+
+  [[nodiscard]] SimTime now() const { return event_queue_.now(); }
+  [[nodiscard]] const HbmStats& stats() const { return stats_; }
+  [[nodiscard]] const std::vector<HbmCompletion>& completions() const {
+    return completions_;
+  }
+  [[nodiscard]] HbmAddress map_address(std::uint64_t address) const {
+    return address_mapper_.map(address);
+  }
+
+ private:
+  struct Access {
+    TransactionId parent_id = 0;
+    HbmOp op = HbmOp::Read;
+    HbmAddress address{};
+    std::uint64_t size_bytes = 0;
+    SimTime arrival_time = 0;
+    ClientId client = 0;
+    std::uint64_t sequence = 0;
+    HbmAccessClass access_class = HbmAccessClass::RowClosed;
+    bool activated = false;
+  };
+  struct ParentRequest {
+    HbmTransaction transaction{};
+    std::uint64_t remaining_accesses = 0;
+    SimTime completion_time = 0;
+    std::uint32_t completion_channel = 0;
+    HbmAccessClass last_access_class = HbmAccessClass::RowClosed;
+  };
+  struct ChannelState {
+    SimTime data_bus_ready_at = 0;
+    SimTime refresh_busy_until = 0;
+    std::deque<Access> read_queue;
+    std::deque<Access> write_queue;
+    std::optional<SimTime> wakeup_at;
+    std::optional<SimTime> refresh_due_at;
+    bool draining_writes = false;
+    bool refresh_pending = false;
+  };
+  struct Candidate {
+    bool is_write = false;
+    std::size_t index = 0;
+    HbmCommand command = HbmCommand::Act;
+    SimTime ready_at = 0;
+    int priority = 0;
+  };
+
+  [[nodiscard]] SimTime transfer_time(std::uint64_t bytes) const;
+  [[nodiscard]] std::vector<Access> split_transaction(
+      const HbmTransaction& transaction) const;
+  [[nodiscard]] std::optional<Candidate> choose_next(std::uint32_t channel,
+                                                       SimTime now) const;
+  void admit(const HbmTransaction& transaction);
+  void schedule_controller_wake(std::uint32_t channel, SimTime when);
+  void drive_controller(std::uint32_t channel);
+  void issue(std::uint32_t channel, Candidate candidate, SimTime now);
+  void finish_access(const Access& access, std::uint32_t channel,
+                     SimTime completion_time);
+  void complete_parent(TransactionId id);
+  void refresh_due(std::uint32_t channel);
+
+  HbmConfig config_;
+  EventQueue event_queue_;
+  HbmAddressMapper address_mapper_;
+  HbmTimingEngine timing_engine_;
+  HbmCommandPlanner command_planner_;
+  std::vector<ChannelState> channels_;
+  std::vector<HbmBankState> banks_;
+  HbmStats stats_;
+  CompletionCallback completion_callback_;
+  std::unordered_set<TransactionId> known_transaction_ids_;
+  std::unordered_map<TransactionId, ParentRequest> parents_;
+  std::vector<HbmCompletion> completions_;
+  std::uint64_t next_access_sequence_ = 0;
+};
+
+}  // namespace hbmsim

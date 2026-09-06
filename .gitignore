@@ -1,0 +1,10 @@
+/build/
+/out/
+/.cache/
+*.swp
+.DS_Store
+
+# Locally cloned, read-only upstream study baselines. Their exact revisions are
+# recorded in docs/REFERENCE_BASELINES.md rather than vendored into HBMSim.
+/third_party/reference/ramulator2/
+/third_party/reference/DRAMSys/
