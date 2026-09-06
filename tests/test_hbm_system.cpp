@@ -121,4 +121,46 @@ int main() {
     assert(system.stats().channels[0].completed_bytes == 16 * 1024);
     assert(system.stats().channels[0].data_bus_busy_time == 164);
   }
+
+  // H6: per-bank refresh rotates banks without using the all-bank blocker.
+  {
+    auto config = base_config();
+    config.topology.banks_per_bank_group = 2;
+    config.refresh_policy = hbmsim::RefreshPolicy::PerBank;
+    config.refresh_interval = 10;
+    config.timing.t_rcd = 100;
+    config.timing.t_rfcpb = 10;
+    hbmsim::HbmSystem system(config);
+    assert(system.submit({1, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
+    system.run_until(25);
+    assert(system.stats().channels[0].refreshes == 0);
+    assert(system.stats().channels[0].per_bank_refreshes == 2);
+  }
+
+  // H6: HBM4 RFM is threshold-triggered and delays a subsequent ACT by tRFMpb.
+  {
+    auto config = hbmsim::HbmConfig::hbm4_8000();
+    config.columns_per_row = 1;
+    config.timing.t_rcd = 5;
+    config.timing.t_rp = 0;
+    config.timing.t_ras = 0;
+    config.timing.t_rc = 3;
+    config.timing.t_cl = 0;
+    config.timing.t_ccd = 0;
+    config.timing.t_rrd = 0;
+    config.timing.t_faw = 0;
+    config.timing.t_wtr = 0;
+    config.timing.t_rtw = 0;
+    config.timing.t_rfmpb = 10;
+    config.enable_rfm = true;
+    config.rfm_activation_threshold = 2;
+    config.channel_bandwidth_bytes_per_ns = 1000;
+    hbmsim::HbmSystem system(config);
+    assert(system.submit({1, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
+    assert(system.submit({2, hbmsim::HbmOp::Read, 32, 64, 100, 0}).accepted());
+    system.run();
+    assert(system.stats().rfm_events == 1);
+    assert(system.stats().channels[0].rfm_events == 1);
+    assert(system.completions().size() == 2);
+  }
 }

@@ -34,4 +34,4 @@ ctest --test-dir build --output-on-failure
 ./build/hbmsim traces/h0_smoke.csv
 ```
 
-The next increment is H6: validation runners and metric comparison against Ramulator 2.1 and DRAMSys.
+H6 adds all-bank/per-bank refresh and the HBM4 `RFMpb` baseline. The exact source alignment and current reference-build status are documented in [docs/H6_REFERENCE_VALIDATION.md](docs/H6_REFERENCE_VALIDATION.md). Numerical cross-tool results are only published after all three tools execute the same normalized trace.

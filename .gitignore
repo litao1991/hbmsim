@@ -1,4 +1,5 @@
 /build/
+/build-reference/
 /out/
 /.cache/
 *.swp

@@ -28,6 +28,7 @@ class HbmAddressMapper {
                    std::uint32_t columns_per_row, std::uint32_t rows_per_bank);
 
   [[nodiscard]] HbmAddress map(std::uint64_t address) const;
+  [[nodiscard]] HbmAddress bank_address(std::uint32_t flat_bank) const;
   [[nodiscard]] std::uint32_t bank_count() const;
 
  private:

@@ -21,7 +21,7 @@ class HbmTimingEngine {
   void record(HbmCommand command, const HbmAddress& address, SimTime when);
 
  private:
-  static constexpr std::size_t kCommandCount = 5;
+  static constexpr std::size_t kCommandCount = 8;
   using CommandHistory = std::array<std::deque<SimTime>, kCommandCount>;
 
   [[nodiscard]] std::uint64_t resource_key(TimingScope scope,

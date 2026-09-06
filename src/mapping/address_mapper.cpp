@@ -52,4 +52,20 @@ std::uint32_t HbmAddressMapper::bank_count() const {
          topology_.bank_groups_per_pseudo_channel * topology_.banks_per_bank_group;
 }
 
+HbmAddress HbmAddressMapper::bank_address(std::uint32_t flat_bank) const {
+  if (flat_bank >= bank_count()) throw std::out_of_range("flat bank is outside topology");
+  HbmAddress result;
+  result.flat_bank = flat_bank;
+  result.bank = flat_bank % topology_.banks_per_bank_group;
+  result.flat_bank_group = flat_bank / topology_.banks_per_bank_group;
+  result.bank_group = result.flat_bank_group % topology_.bank_groups_per_pseudo_channel;
+  result.flat_pseudo_channel = result.flat_bank_group /
+                               topology_.bank_groups_per_pseudo_channel;
+  result.pseudo_channel = result.flat_pseudo_channel % topology_.pseudo_channels_per_channel;
+  result.flat_channel = result.flat_pseudo_channel / topology_.pseudo_channels_per_channel;
+  result.stack = result.flat_channel / topology_.channels_per_stack;
+  result.channel = result.flat_channel % topology_.channels_per_stack;
+  return result;
+}
+
 }  // namespace hbmsim

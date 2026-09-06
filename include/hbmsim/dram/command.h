@@ -2,6 +2,8 @@
 
 namespace hbmsim {
 
-enum class HbmCommand { Act, Pre, Read, Write, RefreshAllBank };
+enum class HbmCommand {
+  Act, Pre, Read, Write, RefreshAllBank, RefreshPerBank, RfmAllBank, RfmPerBank,
+};
 
 }  // namespace hbmsim

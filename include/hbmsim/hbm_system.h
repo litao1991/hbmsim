@@ -17,10 +17,15 @@
 
 namespace hbmsim {
 
+enum class HbmStandard { Hbm2, Hbm3, Hbm4 };
+enum class RefreshPolicy { AllBank, PerBank };
+
 struct HbmConfig {
   HbmTopology topology{};
   HbmTimingSpec timing{};
+  HbmStandard standard = HbmStandard::Hbm3;
   RowPolicy row_policy = RowPolicy::Open;
+  RefreshPolicy refresh_policy = RefreshPolicy::AllBank;
   std::uint64_t channel_bandwidth_bytes_per_ns = 32;
   std::uint64_t address_interleave_bytes = 64;
   std::uint32_t columns_per_row = 128;
@@ -28,18 +33,23 @@ struct HbmConfig {
   std::size_t write_drain_high_watermark = 16;
   std::size_t write_drain_low_watermark = 4;
   SimTime refresh_interval = 0;
+  bool enable_rfm = false;
+  std::uint32_t rfm_activation_threshold = 0;
   std::uint64_t physical_burst_bytes = 64;
   // Zero preserves one modelled access per client transaction. A positive
   // value coalesces contiguous physical bursts into accesses no larger than it.
   std::uint64_t simulation_access_granularity_bytes = 0;
 
   void validate() const;
+  [[nodiscard]] static HbmConfig hbm4_8000();
 };
 
 struct ChannelStats {
   std::uint64_t completed_bytes = 0;
   SimTime data_bus_busy_time = 0;
   std::uint64_t refreshes = 0;
+  std::uint64_t per_bank_refreshes = 0;
+  std::uint64_t rfm_events = 0;
 };
 
 struct HbmStats {
@@ -52,6 +62,7 @@ struct HbmStats {
   std::uint64_t row_hits = 0;
   std::uint64_t row_closed = 0;
   std::uint64_t row_conflicts = 0;
+  std::uint64_t rfm_events = 0;
   std::vector<ChannelStats> channels;
 };
 
@@ -103,6 +114,7 @@ class HbmSystem {
     std::optional<SimTime> refresh_due_at;
     bool draining_writes = false;
     bool refresh_pending = false;
+    std::uint32_t next_per_bank_refresh = 0;
   };
   struct Candidate {
     bool is_write = false;
@@ -111,16 +123,25 @@ class HbmSystem {
     SimTime ready_at = 0;
     int priority = 0;
   };
+  struct MaintenanceCandidate {
+    HbmCommand command = HbmCommand::RefreshPerBank;
+    std::uint32_t bank = 0;
+    SimTime ready_at = 0;
+  };
 
   [[nodiscard]] SimTime transfer_time(std::uint64_t bytes) const;
   [[nodiscard]] std::vector<Access> split_transaction(
       const HbmTransaction& transaction) const;
   [[nodiscard]] std::optional<Candidate> choose_next(std::uint32_t channel,
                                                        SimTime now) const;
+  [[nodiscard]] std::optional<MaintenanceCandidate> choose_maintenance(
+      std::uint32_t channel, SimTime now) const;
   void admit(const HbmTransaction& transaction);
   void schedule_controller_wake(std::uint32_t channel, SimTime when);
   void drive_controller(std::uint32_t channel);
   void issue(std::uint32_t channel, Candidate candidate, SimTime now);
+  void issue_maintenance(std::uint32_t channel,
+                         MaintenanceCandidate candidate, SimTime now);
   void finish_access(const Access& access, std::uint32_t channel,
                      SimTime completion_time);
   void complete_parent(TransactionId id);

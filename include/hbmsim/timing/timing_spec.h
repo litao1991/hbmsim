@@ -30,8 +30,12 @@ struct HbmTimingSpec {
   SimTime t_wtr = 7'500;
   SimTime t_rtw = 7'500;
   SimTime t_rfc = 260'000;
+  SimTime t_rfcpb = 160'000;
+  SimTime t_rfmab = 260'000;
+  SimTime t_rfmpb = 160'000;
 
   [[nodiscard]] std::vector<TimingConstraint> constraints() const;
+  [[nodiscard]] static HbmTimingSpec hbm4_8000();
 };
 
 }  // namespace hbmsim

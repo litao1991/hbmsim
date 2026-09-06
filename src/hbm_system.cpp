@@ -32,9 +32,33 @@ void HbmConfig::validate() const {
       simulation_access_granularity_bytes % physical_burst_bytes != 0) {
     throw std::invalid_argument("simulation access granularity must be a physical-burst multiple");
   }
-  if (refresh_interval != 0 && refresh_interval < timing.t_rfc) {
-    throw std::invalid_argument("refresh interval must be at least tRFC");
+  const auto refresh_duration = refresh_policy == RefreshPolicy::AllBank
+                                    ? timing.t_rfc
+                                    : timing.t_rfcpb;
+  if (refresh_interval != 0 && refresh_interval < refresh_duration) {
+    throw std::invalid_argument("refresh interval must be at least its refresh duration");
   }
+  if (enable_rfm && standard != HbmStandard::Hbm4) {
+    throw std::invalid_argument("RFM is currently supported only for HBM4");
+  }
+  if (enable_rfm && rfm_activation_threshold == 0) {
+    throw std::invalid_argument("RFM requires a non-zero activation threshold");
+  }
+}
+
+HbmConfig HbmConfig::hbm4_8000() {
+  HbmConfig config;
+  config.standard = HbmStandard::Hbm4;
+  config.topology.channels_per_stack = 1;
+  config.topology.pseudo_channels_per_channel = 2;
+  config.topology.bank_groups_per_pseudo_channel = 2;
+  config.topology.banks_per_bank_group = 8;
+  config.columns_per_row = 256;
+  config.rows_per_bank = 16'384;
+  config.timing = HbmTimingSpec::hbm4_8000();
+  config.channel_bandwidth_bytes_per_ns = 64;
+  config.address_interleave_bytes = 32;
+  return config;
 }
 
 HbmSystem::HbmSystem(HbmConfig config)
@@ -191,6 +215,31 @@ std::optional<HbmSystem::Candidate> HbmSystem::choose_next(std::uint32_t channel
   return best_ready.has_value() ? best_ready : earliest;
 }
 
+std::optional<HbmSystem::MaintenanceCandidate> HbmSystem::choose_maintenance(
+    std::uint32_t channel, SimTime now) const {
+  const auto banks_per_channel = config_.topology.pseudo_channels_per_channel *
+                                 config_.topology.bank_groups_per_pseudo_channel *
+                                 config_.topology.banks_per_bank_group;
+  const auto first_bank = channel * banks_per_channel;
+  std::optional<MaintenanceCandidate> earliest;
+  for (std::uint32_t offset = 0; offset < banks_per_channel; ++offset) {
+    const auto flat_bank = first_bank + offset;
+    const auto& bank = banks_[flat_bank];
+    HbmCommand command;
+    if (bank.rfm_pending) command = HbmCommand::RfmPerBank;
+    else if (bank.refresh_pending) command = HbmCommand::RefreshPerBank;
+    else continue;
+    const auto address = address_mapper_.bank_address(flat_bank);
+    const auto ready = timing_engine_.earliest_issue(command, address, now);
+    MaintenanceCandidate candidate{command, flat_bank, ready};
+    if (!earliest.has_value() || candidate.ready_at < earliest->ready_at ||
+        (candidate.ready_at == earliest->ready_at && candidate.bank < earliest->bank)) {
+      earliest = candidate;
+    }
+  }
+  return earliest;
+}
+
 void HbmSystem::drive_controller(std::uint32_t channel) {
   auto& state = channels_.at(channel);
   const auto now = event_queue_.now();
@@ -214,6 +263,15 @@ void HbmSystem::drive_controller(std::uint32_t channel) {
     state.refresh_pending = false;
     state.refresh_busy_until = now + config_.timing.t_rfc;
     schedule_controller_wake(channel, state.refresh_busy_until);
+    return;
+  }
+  if (const auto maintenance = choose_maintenance(channel, now); maintenance.has_value()) {
+    if (maintenance->ready_at > now) {
+      schedule_controller_wake(channel, maintenance->ready_at);
+      return;
+    }
+    issue_maintenance(channel, *maintenance, now);
+    schedule_controller_wake(channel, now);
     return;
   }
   if (state.draining_writes && state.write_queue.size() <= config_.write_drain_low_watermark) {
@@ -244,6 +302,12 @@ void HbmSystem::issue(std::uint32_t channel, Candidate candidate, SimTime now) {
   if (candidate.command == HbmCommand::Act) {
     bank.open_row = queued_access.address.row;
     bank.precharge_pending = false;
+    ++bank.activation_count;
+    if (config_.enable_rfm &&
+        bank.activation_count >= config_.rfm_activation_threshold) {
+      bank.rfm_pending = true;
+      bank.activation_count = 0;
+    }
     queued_access.activated = true;
     return;
   }
@@ -286,6 +350,30 @@ void HbmSystem::issue(std::uint32_t channel, Candidate candidate, SimTime now) {
                         [this, access, channel, completion_time] {
     finish_access(access, channel, completion_time);
   });
+}
+
+void HbmSystem::issue_maintenance(std::uint32_t channel,
+                                  MaintenanceCandidate candidate, SimTime now) {
+  auto& bank = banks_.at(candidate.bank);
+  const auto address = address_mapper_.bank_address(candidate.bank);
+  timing_engine_.record(candidate.command, address, now);
+  ++stats_.issued_commands;
+  bank.open_row.reset();
+  bank.precharge_pending = false;
+  bank.activation_count = 0;
+  switch (candidate.command) {
+    case HbmCommand::RefreshPerBank:
+      bank.refresh_pending = false;
+      ++stats_.channels[channel].per_bank_refreshes;
+      break;
+    case HbmCommand::RfmPerBank:
+      bank.rfm_pending = false;
+      ++stats_.rfm_events;
+      ++stats_.channels[channel].rfm_events;
+      break;
+    default:
+      throw std::logic_error("invalid per-bank maintenance command");
+  }
 }
 
 void HbmSystem::finish_access(const Access& access, std::uint32_t channel,
@@ -335,7 +423,17 @@ void HbmSystem::refresh_due(std::uint32_t channel) {
   auto& state = channels_.at(channel);
   state.refresh_due_at.reset();
   if (parents_.empty()) return;
-  state.refresh_pending = true;
+  if (config_.refresh_policy == RefreshPolicy::AllBank) {
+    state.refresh_pending = true;
+  } else {
+    const auto banks_per_channel = config_.topology.pseudo_channels_per_channel *
+                                   config_.topology.bank_groups_per_pseudo_channel *
+                                   config_.topology.banks_per_bank_group;
+    const auto first_bank = channel * banks_per_channel;
+    const auto flat_bank = first_bank + state.next_per_bank_refresh;
+    banks_[flat_bank].refresh_pending = true;
+    state.next_per_bank_refresh = (state.next_per_bank_refresh + 1) % banks_per_channel;
+  }
   schedule_controller_wake(channel, event_queue_.now());
   if (config_.refresh_interval != 0) {
     const auto due = event_queue_.now() + config_.refresh_interval;

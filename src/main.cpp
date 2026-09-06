@@ -80,14 +80,19 @@ int main(int argc, char** argv) {
             << "write_bytes," << stats.write_bytes << '\n'
             << "row_hits," << stats.row_hits << '\n'
             << "row_closed," << stats.row_closed << '\n'
-            << "row_conflicts," << stats.row_conflicts << '\n';
+            << "row_conflicts," << stats.row_conflicts << '\n'
+            << "rfm_events," << stats.rfm_events << '\n';
   for (std::size_t channel = 0; channel < stats.channels.size(); ++channel) {
     std::cout << "channel_" << channel << "_bytes,"
               << stats.channels[channel].completed_bytes << '\n'
               << "channel_" << channel << "_data_bus_busy_ps,"
               << stats.channels[channel].data_bus_busy_time << '\n'
               << "channel_" << channel << "_refreshes,"
-              << stats.channels[channel].refreshes << '\n';
+              << stats.channels[channel].refreshes << '\n'
+              << "channel_" << channel << "_per_bank_refreshes,"
+              << stats.channels[channel].per_bank_refreshes << '\n'
+              << "channel_" << channel << "_rfm_events,"
+              << stats.channels[channel].rfm_events << '\n';
   }
   return 0;
 }

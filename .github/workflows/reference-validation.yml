@@ -1,0 +1,29 @@
+name: Reference validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build-references:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++
+      - name: Build HBMSim
+        run: cmake -S . -B build -G Ninja && cmake --build build && ctest --test-dir build --output-on-failure
+      - name: Fetch pinned reference sources
+        run: |
+          git clone https://github.com/CMU-SAFARI/ramulator2.git reference-ramulator2
+          git -C reference-ramulator2 checkout 72427a1bba3771564c4fb0e494ba02242fd1eaa7
+          git clone https://github.com/tukl-msd/DRAMSys.git reference-dramsys
+          git -C reference-dramsys checkout c8475150551e4348434b56f5111a966bdf0d81f9
+      - name: Build Ramulator 2.1
+        run: cmake -S reference-ramulator2 -B build-ramulator2 -G Ninja -DRAMULATOR_PYTHON_BINDINGS=ON && cmake --build build-ramulator2
+      - name: Build DRAMSys
+        run: cmake -S reference-dramsys -B build-dramsys -G Ninja -DDRAMSYS_BUILD_TRACE_ANALYZER=OFF && cmake --build build-dramsys
