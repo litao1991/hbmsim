@@ -111,17 +111,45 @@ SimTime HbmSystem::transfer_time(std::uint64_t bytes) const {
 
 std::vector<HbmSystem::Access> HbmSystem::split_transaction(
     const HbmTransaction& transaction) const {
-  const auto granularity = config_.simulation_access_granularity_bytes == 0
-                               ? transaction.size_bytes
-                               : config_.simulation_access_granularity_bytes;
   std::vector<Access> accesses;
   auto address = transaction.address;
   auto remaining = transaction.size_bytes;
+  const auto max_group_bytes = config_.simulation_access_granularity_bytes == 0
+                                   ? config_.physical_burst_bytes
+                                   : config_.simulation_access_granularity_bytes;
+  std::optional<Access> group;
+  HbmAddress previous_address;
+  const auto same_resource = [](const HbmAddress& left, const HbmAddress& right) {
+    return left.flat_channel == right.flat_channel &&
+           left.pseudo_channel == right.pseudo_channel &&
+           left.bank_group == right.bank_group && left.bank == right.bank &&
+           left.row == right.row;
+  };
   while (remaining != 0) {
-    const auto bytes = std::min(remaining, granularity);
-    accesses.push_back(Access{transaction.id, transaction.op, address_mapper_.map(address),
-                              bytes, transaction.arrival_time, transaction.client, 0,
-                              HbmAccessClass::RowClosed});
+    const auto offset_in_burst = address % config_.physical_burst_bytes;
+    const auto bytes_until_burst_boundary =
+        config_.physical_burst_bytes - offset_in_burst;
+    const auto offset_in_mapping = address % address_mapper_.interleave_bytes();
+    const auto bytes_until_mapping_boundary =
+        address_mapper_.interleave_bytes() - offset_in_mapping;
+    const auto bytes = std::min(
+        {remaining, bytes_until_burst_boundary, bytes_until_mapping_boundary});
+    const auto mapped = address_mapper_.map(address);
+    const auto contiguous_column = !group.has_value() ||
+                                   mapped.column == previous_address.column ||
+                                   mapped.column == previous_address.column + 1;
+    const auto can_extend = group.has_value() &&
+                            group->size_bytes + bytes <= max_group_bytes &&
+                            same_resource(group->address, mapped) && contiguous_column;
+    if (can_extend) {
+      group->size_bytes += bytes;
+    } else {
+      if (group.has_value()) accesses.push_back(*group);
+      group = Access{transaction.id, transaction.op, mapped, bytes,
+                     transaction.arrival_time, transaction.client, 0,
+                     HbmAccessClass::RowClosed};
+    }
+    previous_address = mapped;
     remaining -= bytes;
     if (remaining != 0) {
       if (address > std::numeric_limits<std::uint64_t>::max() - bytes) {
@@ -130,6 +158,7 @@ std::vector<HbmSystem::Access> HbmSystem::split_transaction(
       address += bytes;
     }
   }
+  if (group.has_value()) accesses.push_back(*group);
   return accesses;
 }
 
@@ -146,19 +175,73 @@ void HbmSystem::admit(const HbmTransaction& transaction) {
     access.sequence = next_access_sequence_++;
     const auto channel = access.address.flat_channel;
     auto& state = channels_[channel];
+    if (touched_channels.insert(channel).second) {
+      prepare_refresh_for_arrival(channel, event_queue_.now());
+    }
     if (access.op == HbmOp::Read) state.read_queue.push_back(access);
     else state.write_queue.push_back(access);
-    touched_channels.insert(channel);
+    ++state.outstanding_accesses;
   }
   for (const auto channel : touched_channels) {
     schedule_controller_wake(channel, event_queue_.now());
-    if (config_.refresh_interval != 0 && !channels_[channel].refresh_due_at.has_value()) {
-      const auto due = event_queue_.now() + config_.refresh_interval;
-      channels_[channel].refresh_due_at = due;
-      event_queue_.schedule(due, EventType::RefreshDue,
-                            [this, channel] { refresh_due(channel); });
-    }
   }
+}
+
+void HbmSystem::schedule_refresh_due(std::uint32_t channel) {
+  if (config_.refresh_interval == 0) return;
+  auto& state = channels_.at(channel);
+  if (!state.next_refresh_due.has_value()) return;
+  const auto due = *state.next_refresh_due;
+  if (state.refresh_due_at.has_value() && *state.refresh_due_at == due) return;
+  state.refresh_due_at = due;
+  event_queue_.schedule(due, EventType::RefreshDue,
+                        [this, channel] { refresh_due(channel); });
+}
+
+void HbmSystem::issue_all_bank_refresh(std::uint32_t channel, SimTime now) {
+  auto& state = channels_.at(channel);
+  HbmAddress refresh_address;
+  refresh_address.flat_channel = channel;
+  timing_engine_.record(HbmCommand::RefreshAllBank, refresh_address, now);
+  ++stats_.issued_commands;
+  ++stats_.channels[channel].refreshes;
+  const auto banks_per_channel = config_.topology.pseudo_channels_per_channel *
+                                 config_.topology.bank_groups_per_pseudo_channel *
+                                 config_.topology.banks_per_bank_group;
+  const auto first_bank = channel * banks_per_channel;
+  for (std::uint32_t index = 0; index < banks_per_channel; ++index) {
+    banks_[first_bank + index] = {};
+  }
+  state.refresh_pending = false;
+  state.refresh_busy_until = now + config_.timing.t_rfc;
+}
+
+void HbmSystem::apply_idle_refresh(std::uint32_t channel, SimTime when) {
+  auto& state = channels_.at(channel);
+  if (config_.refresh_policy == RefreshPolicy::AllBank) {
+    issue_all_bank_refresh(channel, when);
+    return;
+  }
+  const auto banks_per_channel = config_.topology.pseudo_channels_per_channel *
+                                 config_.topology.bank_groups_per_pseudo_channel *
+                                 config_.topology.banks_per_bank_group;
+  const auto first_bank = channel * banks_per_channel;
+  const auto flat_bank = first_bank + state.next_per_bank_refresh;
+  state.next_per_bank_refresh = (state.next_per_bank_refresh + 1) % banks_per_channel;
+  issue_maintenance(channel, {HbmCommand::RefreshPerBank, flat_bank, when}, when);
+}
+
+void HbmSystem::prepare_refresh_for_arrival(std::uint32_t channel, SimTime now) {
+  if (config_.refresh_interval == 0) return;
+  auto& state = channels_.at(channel);
+  if (!state.next_refresh_due.has_value()) {
+    state.next_refresh_due = now + config_.refresh_interval;
+  }
+  while (*state.next_refresh_due <= now) {
+    apply_idle_refresh(channel, *state.next_refresh_due);
+    *state.next_refresh_due += config_.refresh_interval;
+  }
+  schedule_refresh_due(channel);
 }
 
 void HbmSystem::schedule_controller_wake(std::uint32_t channel, SimTime when) {
@@ -212,6 +295,36 @@ std::optional<HbmSystem::Candidate> HbmSystem::choose_next(std::uint32_t channel
   std::optional<Candidate> earliest;
   if (!primary.empty()) choose_from(primary, primary_is_write, best_ready, earliest);
   else choose_from(fallback, !primary_is_write, best_ready, earliest);
+  // Do not precharge a bank for another row while a data command to its
+  // currently open row is merely waiting for tRCD/tCCD.  Otherwise a
+  // same-bank multi-burst transaction can repeatedly ACT/PRE two rows and
+  // never reach either data command.
+  if (best_ready.has_value() && best_ready->command == HbmCommand::Pre) {
+    const auto& pre_queue = best_ready->is_write ? state.write_queue : state.read_queue;
+    const auto target_bank = pre_queue[best_ready->index].address.flat_bank;
+    std::optional<Candidate> waiting_data;
+    const auto find_waiting_data = [&](const std::deque<Access>& queue, bool is_write) {
+      for (std::size_t index = 0; index < queue.size(); ++index) {
+        const auto& access = queue[index];
+        if (access.address.flat_bank != target_bank) continue;
+        const auto& bank = banks_.at(access.address.flat_bank);
+        const auto command = command_planner_.next(access.op, access.address.row, bank);
+        if (!is_data_command(command)) continue;
+        const auto ready = timing_engine_.earliest_issue(command, access.address, now);
+        Candidate candidate{is_write, index, command, ready, 2};
+        if (!waiting_data.has_value() || candidate.ready_at < waiting_data->ready_at ||
+            (candidate.ready_at == waiting_data->ready_at &&
+             access.sequence < (waiting_data->is_write ? state.write_queue : state.read_queue)
+                                   [waiting_data->index]
+                                       .sequence)) {
+          waiting_data = candidate;
+        }
+      }
+    };
+    find_waiting_data(state.read_queue, false);
+    find_waiting_data(state.write_queue, true);
+    if (waiting_data.has_value()) return waiting_data;
+  }
   return best_ready.has_value() ? best_ready : earliest;
 }
 
@@ -248,20 +361,7 @@ void HbmSystem::drive_controller(std::uint32_t channel) {
     return;
   }
   if (state.refresh_pending) {
-    HbmAddress refresh_address;
-    refresh_address.flat_channel = channel;
-    timing_engine_.record(HbmCommand::RefreshAllBank, refresh_address, now);
-    ++stats_.issued_commands;
-    ++stats_.channels[channel].refreshes;
-    const auto banks_per_channel = config_.topology.pseudo_channels_per_channel *
-                                   config_.topology.bank_groups_per_pseudo_channel *
-                                   config_.topology.banks_per_bank_group;
-    const auto first_bank = channel * banks_per_channel;
-    for (std::uint32_t index = 0; index < banks_per_channel; ++index) {
-      banks_[first_bank + index] = {};
-    }
-    state.refresh_pending = false;
-    state.refresh_busy_until = now + config_.timing.t_rfc;
+    issue_all_bank_refresh(channel, now);
     schedule_controller_wake(channel, state.refresh_busy_until);
     return;
   }
@@ -384,6 +484,11 @@ void HbmSystem::finish_access(const Access& access, std::uint32_t channel,
     case HbmAccessClass::RowConflict: ++stats_.row_conflicts; break;
   }
   stats_.channels[channel].completed_bytes += access.size_bytes;
+  auto& state = channels_.at(channel);
+  if (state.outstanding_accesses == 0) {
+    throw std::logic_error("completed access is not outstanding on its channel");
+  }
+  --state.outstanding_accesses;
   auto parent = parents_.find(access.parent_id);
   if (parent == parents_.end()) throw std::logic_error("missing access parent");
   auto& request = parent->second;
@@ -421,8 +526,17 @@ void HbmSystem::complete_parent(TransactionId id) {
 
 void HbmSystem::refresh_due(std::uint32_t channel) {
   auto& state = channels_.at(channel);
+  if (!state.refresh_due_at.has_value() || *state.refresh_due_at != event_queue_.now()) return;
   state.refresh_due_at.reset();
-  if (parents_.empty()) return;
+  if (!state.next_refresh_due.has_value() || *state.next_refresh_due != event_queue_.now()) {
+    return;
+  }
+  const auto due = *state.next_refresh_due;
+  state.next_refresh_due = due + config_.refresh_interval;
+  if (state.outstanding_accesses == 0) {
+    apply_idle_refresh(channel, due);
+    return;
+  }
   if (config_.refresh_policy == RefreshPolicy::AllBank) {
     state.refresh_pending = true;
   } else {
@@ -435,12 +549,7 @@ void HbmSystem::refresh_due(std::uint32_t channel) {
     state.next_per_bank_refresh = (state.next_per_bank_refresh + 1) % banks_per_channel;
   }
   schedule_controller_wake(channel, event_queue_.now());
-  if (config_.refresh_interval != 0) {
-    const auto due = event_queue_.now() + config_.refresh_interval;
-    state.refresh_due_at = due;
-    event_queue_.schedule(due, EventType::RefreshDue,
-                          [this, channel] { refresh_due(channel); });
-  }
+  schedule_refresh_due(channel);
 }
 
 }  // namespace hbmsim

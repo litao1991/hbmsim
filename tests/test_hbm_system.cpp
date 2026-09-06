@@ -122,6 +122,40 @@ int main() {
     assert(system.stats().channels[0].data_bus_busy_time == 164);
   }
 
+  // V0.1: aggregation cannot hide channel interleaving. Four 64 B bursts
+  // alternate between two channels and therefore remain four modelled accesses.
+  {
+    auto config = base_config();
+    config.topology.channels_per_stack = 2;
+    config.columns_per_row = 16;
+    config.simulation_access_granularity_bytes = 4096;
+    config.timing.t_rcd = 0;
+    config.timing.t_cl = 0;
+    config.channel_bandwidth_bytes_per_ns = 100'000;
+    hbmsim::HbmSystem system(config);
+    assert(system.submit({1, hbmsim::HbmOp::Read, 0, 256, 0, 0}).accepted());
+    system.run();
+    assert(system.stats().modeled_accesses == 4);
+    assert(system.stats().channels[0].completed_bytes == 128);
+    assert(system.stats().channels[1].completed_bytes == 128);
+  }
+
+  // V0.1: adjacent bursts in one row may coalesce, but a row boundary ends
+  // the group even when the configured aggregation limit is larger.
+  {
+    auto config = base_config();
+    config.columns_per_row = 2;
+    config.simulation_access_granularity_bytes = 4096;
+    config.timing.t_rcd = 0;
+    config.timing.t_cl = 0;
+    config.channel_bandwidth_bytes_per_ns = 100'000;
+    hbmsim::HbmSystem system(config);
+    assert(system.submit({1, hbmsim::HbmOp::Read, 0, 256, 0, 0}).accepted());
+    system.run();
+    assert(system.stats().modeled_accesses == 2);
+    assert(system.stats().completed_transactions == 1);
+  }
+
   // H6: per-bank refresh rotates banks without using the all-bank blocker.
   {
     auto config = base_config();
@@ -137,7 +171,27 @@ int main() {
     assert(system.stats().channels[0].per_bank_refreshes == 2);
   }
 
-  // H6: HBM4 RFM is threshold-triggered and delays a subsequent ACT by tRFMpb.
+  // V0.1: an idle refresh closes an open row and is caught up lazily before
+  // the next transaction, rather than creating a false row hit after idle.
+  {
+    auto config = base_config();
+    config.refresh_interval = 100;
+    config.timing.t_rcd = 0;
+    config.timing.t_cl = 0;
+    config.timing.t_rfc = 10;
+    config.channel_bandwidth_bytes_per_ns = 1000;
+    hbmsim::HbmSystem system(config);
+    assert(system.submit({1, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
+    assert(system.submit({2, hbmsim::HbmOp::Read, 0, 64, 500, 0}).accepted());
+    system.run_until(575);
+    assert(system.completions().size() == 2);
+    assert(system.completions()[1].access_class == hbmsim::HbmAccessClass::RowClosed);
+    assert(system.stats().channels[0].refreshes == 5);
+  }
+
+  // H6: HBM4 RFM is threshold-triggered.  HBM4 maps at 32 B granularity,
+  // so each 64 B request below touches two row resources and produces two
+  // threshold crossings across the two requests.
   {
     auto config = hbmsim::HbmConfig::hbm4_8000();
     config.columns_per_row = 1;
@@ -159,8 +213,8 @@ int main() {
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
     assert(system.submit({2, hbmsim::HbmOp::Read, 32, 64, 100, 0}).accepted());
     system.run();
-    assert(system.stats().rfm_events == 1);
-    assert(system.stats().channels[0].rfm_events == 1);
+    assert(system.stats().rfm_events == 2);
+    assert(system.stats().channels[0].rfm_events == 2);
     assert(system.completions().size() == 2);
   }
 }

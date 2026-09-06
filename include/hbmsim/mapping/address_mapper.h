@@ -30,6 +30,9 @@ class HbmAddressMapper {
   [[nodiscard]] HbmAddress map(std::uint64_t address) const;
   [[nodiscard]] HbmAddress bank_address(std::uint32_t flat_bank) const;
   [[nodiscard]] std::uint32_t bank_count() const;
+  [[nodiscard]] std::uint64_t interleave_bytes() const noexcept {
+    return interleave_bytes_;
+  }
 
  private:
   HbmTopology topology_;

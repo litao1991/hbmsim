@@ -4,7 +4,7 @@
 
 HBMSim will be an **event-driven, transaction-level HBM simulator with command-aware DRAM timing**. An external user sees a timed `READ` or `WRITE` completion. Internally, a controller resolves the required ACT/PRE/RD/WR/REF command sequence and applies HBM timing and shared-resource constraints.
 
-The initial release targets HBM2/HBM3 behaviour relevant to AI-system studies. Pin-level PHY behaviour, DQ/DQS/CA signalling, training, ECC, thermal effects, power-down, RFM, and HBM4 are deliberately deferred.
+The initial release targets HBM2/HBM3 behaviour relevant to AI-system studies, while retaining a bounded HBM4/RFM baseline for reference validation. Pin-level PHY behaviour, DQ/DQS/CA signalling, training, ECC, thermal effects, and power-down are deliberately deferred.
 
 The unit of simulated time is picoseconds. All configured timing parameters are normalized from cycles through `tCK` at configuration load, so HBM sub-nanosecond timing and HBF microsecond timing can later share one integer timeline without rounding.
 
@@ -38,10 +38,18 @@ It can later satisfy a shared HBFSim `IMemoryTarget` contract, but no common HBM
 | H1 — topology and locality | HBM hierarchy becomes explicit | Stack/Channel/PseudoChannel/BankGroup/Bank/Row mapping, access splitter, Bank open-row state, row-hit/closed/conflict latency | Mapping tests cover every hierarchy boundary; three directed traces show hit < closed < conflict latency and independent banks overlap. |
 | H2 — command-aware timing | Complete | `CommandPlanner`, command/state transitions for ACT/PRE/RD/WR, declarative timing constraints, controller wakeup calculation | Directed tests cover `tRCD`, `tRP`, `tRAS`, `tRC`, `tCCD`; controller wakes only at the next eligible command/completion, never every clock cycle. |
 | H3 — contention-aware controller | Complete baseline | Separate read/write queues, FR-FCFS, Open/Closed row policy interfaces, data-bus reservations, configurable write-drain threshold | Tests show ready > row-hit > age ordering and write-drain selection; queue-depth sampling and formal starvation bounds remain H6 validation work. |
-| H4 — HBM timing completeness | Complete baseline | `tRRD`, `tFAW`, `tWTR`, `tRTW`, bank-group/pseudo-channel/channel scopes, all-bank refresh interface and REFab | Constraint matrix tests include `tRCD` and `tFAW`; all-bank refresh blocks only the selected Channel. Per-bank refresh remains future work. |
-| H5 — scalable AI transactions | Complete baseline | Physical-burst versus simulation-access granularity, 4 KiB/16KiB aggregation, bounded timing history and statistics | A directed 16 KiB transaction is represented by four 4 KiB accesses. 16 MiB scale and oracle calibration are explicit H6 gates. |
-| H6 — oracle validation | In progress — reference build gate added | Normalized trace format, runners for Ramulator 2.1 and DRAMSys where supported, metric comparer, stored reference configurations | Local reference builds are blocked by documented AppleClang/libc++ compatibility failures. Ubuntu CI builds the pinned references; no numerical error target is claimed until a common-trace run succeeds. |
+| H4 — HBM timing completeness | Complete baseline | `tRRD`, `tFAW`, `tWTR`, `tRTW`, bank-group/pseudo-channel/channel scopes, all-bank and per-bank refresh | Constraint matrix tests include `tRCD` and `tFAW`; all-bank refresh blocks only the selected Channel and per-bank refresh rotates the selected bank. |
+| H5 — scalable AI transactions | Complete baseline | Physical-burst versus simulation-access granularity, topology-safe 4 KiB/16KiB aggregation, bounded timing history and statistics | A directed 16 KiB transaction is represented by four 4 KiB accesses when the mapping permits it; aggregation never crosses a channel, pseudo-channel, bank group, bank, or row. 16 MiB scale and oracle calibration are explicit H6 gates. |
+| H6 — oracle validation | In progress — V0.1 correctness gate complete | Normalized trace format, runners for Ramulator 2.1 and DRAMSys where supported, metric comparer, stored reference configurations | Ubuntu CI builds and runs the pinned references. V0.2 must establish a common HBM2 profile manifest; V0.3 then adds strict arrival/burst/completion alignment and published numerical error targets. |
 | H7 — HBFSim system integration | HBM/HBF/compute studies | Shared event-queue adapter, `IMemoryTarget` trial interface, HBF→HBM fill, residency/prefetch hooks, overlap statistics | One end-to-end scenario proves compute, HBM, and HBF events share a timeline; no HBM-specific dependency leaks into HBF media code. |
+
+### V0 validation hardening
+
+| Stage | Status | Deliverable |
+| --- | --- | --- |
+| V0.1 — Correctness | Complete | Refresh state is retained while a channel is idle and caught up at the next arrival; splitting observes physical-burst and address-mapping boundaries before coalescing only contiguous work in one channel/pseudo-channel/bank-group/bank/row resource; directed regressions cover these cases. |
+| V0.2 — Common HBM2 profile | Planned | A machine-readable HBM2_2000 profile will normalize organization, timing, mapping, burst and arrival semantics for HBMSim, Ramulator 2.1, and DRAMSys. |
+| V0.3 — Strict H6 | Planned | One normalized request stream, full read/write completion accounting, command and row-locality metrics, plus p50/p95 latency and throughput comparison across all runnable tools. |
 
 ## Implementation rules
 

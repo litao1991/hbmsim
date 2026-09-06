@@ -36,8 +36,8 @@ struct HbmConfig {
   bool enable_rfm = false;
   std::uint32_t rfm_activation_threshold = 0;
   std::uint64_t physical_burst_bytes = 64;
-  // Zero preserves one modelled access per client transaction. A positive
-  // value coalesces contiguous physical bursts into accesses no larger than it.
+  // Zero models every physical burst. A positive value coalesces only
+  // contiguous bursts that remain in the same channel/PC/BG/bank/row.
   std::uint64_t simulation_access_granularity_bytes = 0;
 
   void validate() const;
@@ -114,7 +114,11 @@ class HbmSystem {
     std::optional<SimTime> refresh_due_at;
     bool draining_writes = false;
     bool refresh_pending = false;
+    std::uint64_t outstanding_accesses = 0;
     std::uint32_t next_per_bank_refresh = 0;
+    // `next_refresh_due` remains meaningful while idle.  `refresh_due_at`
+    // exists only when a corresponding event is actually queued.
+    std::optional<SimTime> next_refresh_due;
   };
   struct Candidate {
     bool is_write = false;
@@ -145,6 +149,10 @@ class HbmSystem {
   void finish_access(const Access& access, std::uint32_t channel,
                      SimTime completion_time);
   void complete_parent(TransactionId id);
+  void prepare_refresh_for_arrival(std::uint32_t channel, SimTime now);
+  void schedule_refresh_due(std::uint32_t channel);
+  void apply_idle_refresh(std::uint32_t channel, SimTime when);
+  void issue_all_bank_refresh(std::uint32_t channel, SimTime now);
   void refresh_due(std::uint32_t channel);
 
   HbmConfig config_;

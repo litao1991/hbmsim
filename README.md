@@ -25,7 +25,7 @@ third_party/reference/        pinned, read-only upstream study sources
 
 ## Status
 
-H0–H5 are implemented: the project builds as a standalone C++20 library and trace tool, exposes transaction submission/completion, uses picosecond time, maps every access through Stack/Channel/PseudoChannel/BankGroup/Bank/Row, and uses controller-wakeup events rather than clock ticks. It includes ACT/PRE/RD/WR planning, declarative timing constraints, FR-FCFS scheduling, Open/Closed row policy, write drain, all-bank refresh, and optional coarse simulation-access aggregation.
+H0–H5 are implemented: the project builds as a standalone C++20 library and trace tool, exposes transaction submission/completion, uses picosecond time, maps every access through Stack/Channel/PseudoChannel/BankGroup/Bank/Row, and uses controller-wakeup events rather than clock ticks. It includes ACT/PRE/RD/WR planning, declarative timing constraints, FR-FCFS scheduling, Open/Closed row policy, write drain, refresh, and optional topology-safe simulation-access aggregation.
 
 ```sh
 cmake -S . -B build
@@ -34,4 +34,4 @@ ctest --test-dir build --output-on-failure
 ./build/hbmsim traces/h0_smoke.csv
 ```
 
-H6 adds all-bank/per-bank refresh and the HBM4 `RFMpb` baseline. The exact source alignment and current reference-build status are documented in [docs/H6_REFERENCE_VALIDATION.md](docs/H6_REFERENCE_VALIDATION.md). Numerical cross-tool results are only published after all three tools execute the same normalized trace.
+H6 adds all-bank/per-bank refresh and the HBM4 `RFMpb` baseline. V0.1 correctness hardening is complete: idle refresh cannot leave an invalid open-row hit, and coalescing cannot cross a mapped memory resource. V0.2 will introduce a common HBM2 profile manifest; V0.3 will publish strict, like-for-like numerical comparison. The exact source alignment and current reference-build status are documented in [docs/H6_REFERENCE_VALIDATION.md](docs/H6_REFERENCE_VALIDATION.md).
