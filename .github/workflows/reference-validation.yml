@@ -17,6 +17,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++
       - name: Build HBMSim
         run: cmake -S . -B build -G Ninja && cmake --build build && ctest --test-dir build --output-on-failure
+      - name: Generate HBMSim baseline metrics
+        run: |
+          python3 tools/validation/generate_microtraces.py
+          python3 tools/validation/summarize_hbmsim.py ./build/hbmsim
       - name: Fetch pinned reference sources
         run: |
           git clone https://github.com/CMU-SAFARI/ramulator2.git reference-ramulator2
@@ -27,3 +31,8 @@ jobs:
         run: cmake -S reference-ramulator2 -B build-ramulator2 -G Ninja -DRAMULATOR_PYTHON_BINDINGS=ON && cmake --build build-ramulator2
       - name: Build DRAMSys
         run: cmake -S reference-dramsys -B build-dramsys -G Ninja -DDRAMSYS_BUILD_TRACE_ANALYZER=OFF && cmake --build build-dramsys
+      - name: Upload validation results
+        uses: actions/upload-artifact@v4
+        with:
+          name: hbm-validation-results
+          path: validation/

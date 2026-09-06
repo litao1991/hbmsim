@@ -1,6 +1,5 @@
 #include "hbmsim/hbm_system.h"
 
-#include <charconv>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -27,9 +26,13 @@ std::uint64_t parse_u64(const std::string& value) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 2) {
-    std::cerr << "usage: hbmsim TRACE.csv\n"
+  if (argc != 2 && argc != 4) {
+    std::cerr << "usage: hbmsim TRACE.csv [--completions FILE.csv]\n"
                  "columns: arrival_ps,op,address,size_bytes[,client]\n";
+    return 2;
+  }
+  if (argc == 4 && std::string(argv[2]) != "--completions") {
+    std::cerr << "expected --completions FILE.csv\n";
     return 2;
   }
 
@@ -72,6 +75,26 @@ int main(int argc, char** argv) {
   }
 
   system.run();
+  if (argc == 4) {
+    std::ofstream completions(argv[3]);
+    if (!completions) {
+      std::cerr << "cannot write completions: " << argv[3] << '\n';
+      return 2;
+    }
+    completions << "id,op,address,size_bytes,channel,arrival_ps,completion_ps,latency_ps,access_class\n";
+    for (const auto& completion : system.completions()) {
+      const char* op = completion.op == hbmsim::HbmOp::Read ? "READ" : "WRITE";
+      const char* access_class = completion.access_class == hbmsim::HbmAccessClass::RowHit
+                                     ? "row_hit"
+                                     : completion.access_class == hbmsim::HbmAccessClass::RowClosed
+                                           ? "row_closed"
+                                           : "row_conflict";
+      completions << completion.id << ',' << op << ',' << completion.address << ','
+                  << completion.size_bytes << ',' << completion.channel << ','
+                  << completion.arrival_time << ',' << completion.completion_time << ','
+                  << completion.latency << ',' << access_class << '\n';
+    }
+  }
   const auto& stats = system.stats();
   std::cout << "completed_transactions," << stats.completed_transactions << '\n'
             << "modeled_accesses," << stats.modeled_accesses << '\n'
