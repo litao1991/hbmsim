@@ -27,10 +27,21 @@ jobs:
           git -C reference-ramulator2 checkout 72427a1bba3771564c4fb0e494ba02242fd1eaa7
           git clone https://github.com/tukl-msd/DRAMSys.git reference-dramsys
           git -C reference-dramsys checkout c8475150551e4348434b56f5111a966bdf0d81f9
+      - name: Prepare common reference inputs
+        run: python3 tools/validation/prepare_reference_inputs.py --dramsys-root reference-dramsys
       - name: Build Ramulator 2.1
-        run: cmake -S reference-ramulator2 -B build-ramulator2 -G Ninja -DRAMULATOR_PYTHON_BINDINGS=ON && cmake --build build-ramulator2
+        run: |
+          python3 tools/validation/patch_ramulator_drain.py reference-ramulator2 --record validation/reference-inputs/ramulator2-drain-adapter.txt
+          cmake -S reference-ramulator2 -B build-ramulator2 -G Ninja -DRAMULATOR_PYTHON_BINDINGS=ON
+          cmake --build build-ramulator2
+      - name: Run Ramulator 2.1 HBM2 traces
+        run: PYTHONPATH="$GITHUB_WORKSPACE/reference-ramulator2/python" python3 tools/validation/run_ramulator.py
       - name: Build DRAMSys
         run: cmake -S reference-dramsys -B build-dramsys -G Ninja -DDRAMSYS_BUILD_TRACE_ANALYZER=OFF && cmake --build build-dramsys
+      - name: Run DRAMSys HBM2 traces
+        run: python3 tools/validation/run_dramsys.py ./build-dramsys/DRAMSys
+      - name: Compose three-simulator comparison
+        run: python3 tools/validation/compose_comparison.py
       - name: Upload validation results
         uses: actions/upload-artifact@v4
         with:
