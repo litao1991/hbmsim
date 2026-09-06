@@ -39,7 +39,7 @@ jobs:
       - name: Build DRAMSys
         run: cmake -S reference-dramsys -B build-dramsys -G Ninja -DDRAMSYS_BUILD_TRACE_ANALYZER=OFF && cmake --build build-dramsys
       - name: Run DRAMSys HBM2 traces
-        run: python3 tools/validation/run_dramsys.py ./build-dramsys/DRAMSys
+        run: python3 tools/validation/run_dramsys.py ./build-dramsys/bin/DRAMSys
       - name: Compose three-simulator comparison
         run: python3 tools/validation/compose_comparison.py
       - name: Upload validation results
