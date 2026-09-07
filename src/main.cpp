@@ -122,6 +122,10 @@ int main(int argc, char** argv) {
             << "row_hits," << stats.row_hits << '\n'
             << "row_closed," << stats.row_closed << '\n'
             << "row_conflicts," << stats.row_conflicts << '\n'
+            << "act_commands," << stats.act_commands << '\n'
+            << "pre_commands," << stats.pre_commands << '\n'
+            << "read_commands," << stats.read_commands << '\n'
+            << "write_commands," << stats.write_commands << '\n'
             << "rfm_events," << stats.rfm_events << '\n';
   for (std::size_t channel = 0; channel < stats.channels.size(); ++channel) {
     std::cout << "channel_" << channel << "_bytes,"

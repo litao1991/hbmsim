@@ -54,6 +54,26 @@ int main() {
     assert(mapped.row == 5);
   }
 
+  // V0.3: HBM pseudo-channels have independent data buses.  Two 32 B reads
+  // accepted at the same time complete together when they select PC 0/1.
+  {
+    auto config = hbmsim::HbmConfig::hbm2_2000();
+    config.timing.t_rcd = 0;
+    config.timing.t_cl = 0;
+    config.timing.t_ccd = 0;
+    config.timing.t_rrd = 0;
+    config.timing.t_faw = 0;
+    config.channel_bandwidth_bytes_per_ns = 16;
+    hbmsim::HbmSystem system(config);
+    assert(system.submit({1, hbmsim::HbmOp::Read, 0, 32, 0, 0}).accepted());
+    assert(system.submit({2, hbmsim::HbmOp::Read, 32, 32, 0, 0}).accepted());
+    system.run();
+    assert(system.completions().size() == 2);
+    assert(system.completions()[0].completion_time == 2'000);
+    assert(system.completions()[1].completion_time == 2'000);
+    assert(system.stats().channels[0].data_bus_busy_time == 4'000);
+  }
+
   // H2: a closed-row request plans ACT then waits tRCD before RD.
   {
     hbmsim::HbmSystem system(base_config());

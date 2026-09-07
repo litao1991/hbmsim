@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 from pathlib import Path
 
 
@@ -27,9 +28,13 @@ def number(stats: dict, name: str) -> float:
     return sum(float(value) for value in values) if values else 0.0
 
 
+def percentile(values: list[int], percentage: int) -> float:
+    ordered = sorted(values)
+    return float(ordered[max(0, math.ceil(percentage / 100 * len(ordered)) - 1)])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--drain-cycles", type=int, default=4096)
     parser.add_argument("--profile", type=Path,
                         default=Path("validation/profiles/hbm2_2000.json"))
     args = parser.parse_args()
@@ -44,30 +49,53 @@ def main() -> None:
     rows = []
     for trace in sorted(trace_dir.glob("*.trace")):
         dram = ramulator.dram.HBM2(org_preset="HBM2_2Gb", timing_preset="HBM2_2000Mbps")
+        command_file = result_dir / f"ramulator2-{trace.stem}-commands.csv"
         controller = ramulator.controller.HBM12(
             dram=dram, scheduler=ramulator.scheduler.FRFCFSRowHit(),
             refresh_manager=ramulator.refresh_manager.NoRefresh(),
             row_policy=ramulator.row_policy.Open(),
-            addr_mapper=ramulator.addr_mapper.RoBaRaCoCh())
+            addr_mapper=ramulator.addr_mapper.RoBaRaCoCh(),
+            controller_plugins=[ramulator.controller_plugin.CommandCounter(
+                commands_to_count=["ACT", "PREpb", "RD", "WR"], path=str(command_file.resolve()))])
         memory = ramulator.memory_system.GenericDRAM(
             clock_ratio=1, channel_mapper=ramulator.channel_mapper.PassThroughChannelMapper(),
             controllers=[controller])
-        simulation = ramulator.Simulation(
-            ramulator.frontend.ReadWriteTrace(clock_ratio=1, path=str(trace.resolve())), memory)
-        simulation._sim.run_with_drain(args.drain_cycles)
+        completion_file = result_dir / f"ramulator2-{trace.stem}-completions.csv"
+        frontend = {
+            "impl": "ReadWriteTrace", "clock_ratio": 1, "path": str(trace.resolve()),
+            "completion_path": str(completion_file.resolve()),
+        }
+        simulation = ramulator.Simulation(frontend, memory)
+        simulation.run()
         simulation.finalize()
         stats = simulation.stats
         (result_dir / f"ramulator2-{trace.stem}-stats.json").write_text(
             json.dumps(stats, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        completed = int(number(stats, "num_read_reqs_served") + number(stats, "num_write_reqs_served"))
+        with completion_file.open(newline="", encoding="utf-8") as stream:
+            completions = list(csv.DictReader(stream))
+        with command_file.open(newline="", encoding="utf-8") as stream:
+            commands = {row[0].strip(): row[1].strip() for row in csv.reader(stream)}
+        requests = len(trace.read_text(encoding="utf-8").splitlines())
+        if len(completions) != requests:
+            raise RuntimeError(f"{trace}: completed {len(completions)} of {requests} requests")
+        latencies = [int(row["latency_cycles"]) * 1000 for row in completions]
+        first_arrival = min(int(row["arrival_cycle"]) for row in completions) * 1000
+        last_completion = max(int(row["completion_cycle"]) for row in completions) * 1000
         rows.append({
             "tool": "ramulator2", "trace": trace.stem,
             "profile": profile["profile_id"],
-            "requests": len(trace.read_text(encoding="utf-8").splitlines()),
-            "completed_requests": completed,
-            "mean_latency_ps": number(stats, "avg_read_latency") * 1000,
-            "p95_latency_ps": "", "throughput_bytes_per_ns": "",
-            "metric_note": f"mean is read-only; throughput omitted because {args.drain_cycles} fixed drain cycles are included",
+            "requests": requests, "completed_requests": len(completions),
+            "mean_latency_ps": sum(latencies) / len(latencies),
+            "p50_latency_ps": percentile(latencies, 50),
+            "p95_latency_ps": percentile(latencies, 95),
+            "throughput_bytes_per_ns": requests * profile["request_contract"]["request_size_bytes"] * 1000 /
+                                   max(1, last_completion - first_arrival),
+            "act_commands": commands.get("ACT", "0"), "pre_commands": commands.get("PREpb", "0"),
+            "read_commands": commands.get("RD", "0"), "write_commands": commands.get("WR", "0"),
+            "row_hits": int(number(stats, "row_hits")),
+            "row_misses": int(number(stats, "row_misses")),
+            "row_conflicts": int(number(stats, "row_conflicts")),
+            "metric_note": "callback-derived completion time; absolute arrivals preserved at 1 ns",
         })
     with (result_dir / "ramulator2-summary.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=rows[0].keys())

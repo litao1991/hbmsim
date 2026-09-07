@@ -23,8 +23,9 @@ def main() -> None:
                 row["profile"] = metadata["profile_id"]
                 row["comparison_scope"] = metadata["comparison_status"]
                 rows.append(row)
-    fields = ["tool", "profile", "trace", "requests", "completed_requests", "mean_latency_ps",
-              "p95_latency_ps", "throughput_bytes_per_ns", "comparison_scope", "metric_note"]
+    fields = ["tool", "profile", "trace", "requests", "completed_requests", "mean_latency_ps", "p50_latency_ps",
+              "p95_latency_ps", "throughput_bytes_per_ns", "act_commands", "pre_commands", "read_commands",
+              "write_commands", "row_hits", "row_misses", "row_conflicts", "comparison_scope", "metric_note"]
     with (RESULTS / "three-simulator-comparison.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=fields)
         writer.writeheader()

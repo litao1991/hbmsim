@@ -6,7 +6,7 @@
     "trace_format": "arrival_ps,op,address,size_bytes",
     "operations": ["READ", "WRITE"],
     "arrival_time_unit_ps": 1000,
-    "request_size_bytes": 64,
+    "request_size_bytes": 32,
     "address_unit_bytes": 1
   },
   "hbm2_organization": {
@@ -42,6 +42,7 @@
     "bank_group_bits": [6, 7],
     "bank_bits": [8, 9],
     "sid_or_stack_bit": [10],
+    "sid_or_stack_value": 0,
     "column_bits": [11, 12, 13, 14, 15],
     "row_bits": [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
   },
@@ -50,22 +51,22 @@
       "cli_profile": "hbm2_2000",
       "refresh": "disabled",
       "controller": "FR-FCFS open-row",
-      "known_difference": "The current channel-level data-bus reservation does not yet model two independent pseudo-channel data buses; the HBM2 SID bit is not yet represented as a hierarchy level."
+      "known_difference": "The profile fixes the SID/stack selector to zero because the Ramulator HBM2_2Gb preset has one SID; HBMSim therefore needs no SID hierarchy for this baseline."
     },
     "ramulator2": {
       "dram": "HBM2(org_preset=HBM2_2Gb,timing_preset=HBM2_2000Mbps)",
       "address_mapper": "RoBaRaCoCh with hierarchical trace vectors from address_mapping",
       "refresh": "NoRefresh",
       "controller": "FRFCFSRowHit open-row",
-      "known_difference": "ReadWriteTrace has no size field and treats each converted line as its fixed HBM2 request payload; V0.3 must expand every neutral 64 B request consistently."
+      "known_difference": "The V0.3 timed-trace adapter is applied during reference CI to preserve absolute arrivals and emit callback-derived completion records."
     },
     "dramsys": {
-      "memspec": "configs/memspec/HBM2.json",
+      "memspec": "generated validation/reference-inputs/dramsys/hbm2_2000-memspec.json",
       "address_mapping": "configs/addressmapping/am_hbm2_16Gb-8H_pc_brc.json",
       "refresh": "stock controller configuration",
       "controller": "stock fr_fcfs.json",
-      "known_difference": "The stock DRAMSys HBM2 memory specification has a different density/topology. V0.3 must generate a profile-specific memspec before numerical equivalence is claimed."
+      "known_difference": "The V0.3 input preparer derives a profile-specific HBM2 memspec from the pinned stock schema; DRAMSys retains its own command/timing implementation."
     }
   },
-  "comparison_status": "V0.2 common profile contract: timing and request semantics are explicit. V0.3 is required to normalize burst expansion and remove the recorded SID, data-bus, and DRAMSys density differences."
+  "comparison_status": "V0.3 alignment in progress: every request is one 32 B HBM2 payload with an absolute 1 ns arrival tick and SID/stack selector zero; DRAMSys receives a profile-derived HBM2 organization/timing JSON."
 }

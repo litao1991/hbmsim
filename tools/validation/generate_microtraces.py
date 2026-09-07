@@ -16,18 +16,26 @@ def write_trace(name: str, rows: list[tuple[int, str, int, int]]) -> None:
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    write_trace("row_hit", [(index * 50_000, "READ", index * 64, 64) for index in range(32)])
+    # V0.3 uses exactly one 32 B HBM2 pseudo-channel payload per request and
+    # 10 ns-spaced arrivals.  Every target can preserve these arrival times
+    # without frontend backpressure or tool-specific burst expansion.
+    write_trace("row_hit", [(index * 10_000, "READ", (index % 32) << 11, 32)
+                            for index in range(32)])
     write_trace("row_conflict", [
-        (index * 50_000, "READ", (index % 2) * 8 * 1024, 64) for index in range(32)
+        (index * 10_000, "READ", (index % 2) << 16, 32) for index in range(32)
     ])
     write_trace("bank_parallel", [
-        (0, "READ", index * 1024, 64) for index in range(32)
+        (index * 10_000, "READ", ((index % 4) << 8) | (((index // 4) % 4) << 6), 32)
+        for index in range(32)
     ])
     write_trace("read_write_mix", [
-        (index * 25_000, "READ" if index % 3 else "WRITE", index * 64, 64)
+        (index * 10_000, "READ" if index % 3 else "WRITE", (index % 32) << 11, 32)
         for index in range(48)
     ])
-    write_trace("sequential", [(index * 10_000, "READ", index * 64, 64) for index in range(64)])
+    write_trace("sequential", [
+        (index * 10_000, "READ", ((index % 32) << 11) | ((index // 32) << 16), 32)
+        for index in range(64)
+    ])
 
 
 if __name__ == "__main__":

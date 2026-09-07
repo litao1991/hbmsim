@@ -31,7 +31,7 @@ jobs:
         run: python3 tools/validation/prepare_reference_inputs.py --dramsys-root reference-dramsys
       - name: Build Ramulator 2.1
         run: |
-          python3 tools/validation/patch_ramulator_drain.py reference-ramulator2 --record validation/reference-inputs/ramulator2-drain-adapter.txt
+          python3 tools/validation/patch_ramulator_timed_trace.py reference-ramulator2 --record validation/reference-inputs/ramulator2-timed-trace-adapter.txt
           cmake -S reference-ramulator2 -B build-ramulator2 -G Ninja -DRAMULATOR_PYTHON_BINDINGS=ON
           cmake --build build-ramulator2
       - name: Run Ramulator 2.1 HBM2 traces

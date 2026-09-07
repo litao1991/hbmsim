@@ -49,7 +49,7 @@ It can later satisfy a shared HBFSim `IMemoryTarget` contract, but no common HBM
 | --- | --- | --- |
 | V0.1 — Correctness | Complete | Refresh state is retained while a channel is idle and caught up at the next arrival; splitting observes physical-burst and address-mapping boundaries before coalescing only contiguous work in one channel/pseudo-channel/bank-group/bank/row resource; directed regressions cover these cases. |
 | V0.2 — Common HBM2 profile | Complete | `validation/profiles/hbm2_2000.json` records organization, timing, mapping, burst and arrival semantics. HBMSim exposes it through `--profile hbm2_2000`; reference-input preparation records the manifest identity with every run. Known non-equivalences remain explicit rather than hidden. |
-| V0.3 — Strict H6 | Planned | One normalized request stream, full read/write completion accounting, command and row-locality metrics, plus p50/p95 latency and throughput comparison across all runnable tools. |
+| V0.3 — Strict H6 | In progress | One normalized 32 B request stream with absolute 1 ns arrivals, full read/write completion accounting, command and row-locality metrics, plus p50/p95 latency and throughput comparison across all runnable tools. CI applies an auditable timed-trace adapter to the pinned Ramulator checkout. |
 
 ## Implementation rules
 

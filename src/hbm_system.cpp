@@ -101,6 +101,9 @@ HbmSystem::HbmSystem(HbmConfig config)
       timing_engine_(config.timing) {
   config_.validate();
   channels_.resize(config_.topology.channel_count());
+  for (auto& channel : channels_) {
+    channel.data_bus_ready_at.assign(config_.topology.pseudo_channels_per_channel, 0);
+  }
   banks_.resize(address_mapper_.bank_count());
   stats_.channels.resize(config_.topology.channel_count());
 }
@@ -431,6 +434,13 @@ void HbmSystem::issue(std::uint32_t channel, Candidate candidate, SimTime now) {
   auto& bank = banks_.at(queued_access.address.flat_bank);
   timing_engine_.record(candidate.command, queued_access.address, now);
   ++stats_.issued_commands;
+  switch (candidate.command) {
+    case HbmCommand::Act: ++stats_.act_commands; break;
+    case HbmCommand::Pre: ++stats_.pre_commands; break;
+    case HbmCommand::Read: ++stats_.read_commands; break;
+    case HbmCommand::Write: ++stats_.write_commands; break;
+    default: break;
+  }
 
   if (candidate.command == HbmCommand::Act) {
     bank.open_row = queued_access.address.row;
@@ -467,13 +477,14 @@ void HbmSystem::issue(std::uint32_t channel, Candidate candidate, SimTime now) {
     throw std::overflow_error("CAS latency overflows SimTime");
   }
   const auto data_ready = now + config_.timing.t_cl;
-  const auto data_start = std::max(data_ready, state.data_bus_ready_at);
+  auto& data_bus_ready_at = state.data_bus_ready_at.at(queued_access.address.pseudo_channel);
+  const auto data_start = std::max(data_ready, data_bus_ready_at);
   const auto data_duration = transfer_time(access.size_bytes);
   if (data_start > std::numeric_limits<SimTime>::max() - data_duration) {
     throw std::overflow_error("access completion overflows SimTime");
   }
   const auto completion_time = data_start + data_duration;
-  state.data_bus_ready_at = completion_time;
+  data_bus_ready_at = completion_time;
   if (stats_.channels[channel].data_bus_busy_time >
       std::numeric_limits<SimTime>::max() - data_duration) {
     throw std::overflow_error("data-bus utilization overflows SimTime");

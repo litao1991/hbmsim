@@ -12,7 +12,13 @@ The validation target is a common HBM2 micro-trace set run through HBMSim, Ramul
 ./build/hbmsim validation/traces/row_hit.csv --profile hbm2_2000
 ```
 
-The manifest also names the remaining limitations that prevent a strict V0.3 claim: HBMSim currently reserves one channel-level data bus rather than two independent pseudo-channel buses and does not model HBM2 SID, Ramulator's trace frontend has no request-size field, and the stock DRAMSys HBM2 memory specification differs in density/topology. The Actions comparison carries this scope automatically through `validation/reference-inputs/metadata.json`; it must not be interpreted as numerical equivalence until those differences are removed.
+The manifest fixes the SID/stack selector to zero, matching the single-SID Ramulator HBM2_2Gb baseline without introducing a superfluous HBMSim hierarchy. The validation input preparer derives a DRAMSys HBM2 memspec from that same organization and timing contract instead of using its stock 16Gb/8Hi dimensions. The Actions comparison carries the selected profile through `validation/reference-inputs/metadata.json`.
+
+## V0.3 alignment work
+
+HBMSim now reserves data transfer independently for each pseudo-channel. The common microtraces use a single 32 B HBM2 pseudo-channel payload at every request, so no tool-specific burst coalescing is required. The validation workflow applies [`patch_ramulator_timed_trace.py`](../tools/validation/patch_ramulator_timed_trace.py) to the pinned checkout before building it. The adapter changes only the test frontend: it reads absolute 1 ns arrival cycles, retains the request identity, writes callback-derived completion records and stops only after every request completes. It does not alter Ramulator's HBM2 DRAM model, controller, scheduler or timing rules.
+
+The three summaries now have fields for submitted/completed request counts, mean/p50/p95 latency, throughput, ACT/PRE/RD/WR totals and row hit/miss/conflict. DRAMSys derives the latter from its recorded command phases. DRAMSys still has its own command implementation, so phase-derived metrics remain a comparison result rather than an assumption of cycle identity.
 
 ## HBM4/RFM source alignment
 

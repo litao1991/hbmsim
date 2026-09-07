@@ -64,6 +64,10 @@ struct HbmStats {
   std::uint64_t row_hits = 0;
   std::uint64_t row_closed = 0;
   std::uint64_t row_conflicts = 0;
+  std::uint64_t act_commands = 0;
+  std::uint64_t pre_commands = 0;
+  std::uint64_t read_commands = 0;
+  std::uint64_t write_commands = 0;
   std::uint64_t rfm_events = 0;
   std::vector<ChannelStats> channels;
 };
@@ -108,7 +112,10 @@ class HbmSystem {
     HbmAccessClass last_access_class = HbmAccessClass::RowClosed;
   };
   struct ChannelState {
-    SimTime data_bus_ready_at = 0;
+    // HBM pseudo-channels have independent data paths.  Channel-wide timing
+    // constraints remain in the timing engine; only data transfer ownership
+    // is tracked per pseudo-channel here.
+    std::vector<SimTime> data_bus_ready_at;
     SimTime refresh_busy_until = 0;
     std::deque<Access> read_queue;
     std::deque<Access> write_queue;

@@ -8,9 +8,9 @@ import subprocess
 from pathlib import Path
 
 
-def percentile_95(values: list[int]) -> float:
+def percentile(values: list[int], percentage: int) -> float:
     ordered = sorted(values)
-    index = max(0, math.ceil(0.95 * len(ordered)) - 1)
+    index = max(0, math.ceil(percentage / 100 * len(ordered)) - 1)
     return float(ordered[index])
 
 
@@ -26,9 +26,11 @@ def main() -> None:
     rows = []
     for trace in sorted(trace_dir.glob("*.csv")):
         completion_file = result_dir / f"hbmsim-{trace.stem}-completions.csv"
-        subprocess.run([str(binary), str(trace), "--profile", args.profile,
-                        "--completions", str(completion_file)], check=True,
-                       stdout=subprocess.DEVNULL)
+        process = subprocess.run(
+            [str(binary), str(trace), "--profile", args.profile,
+             "--completions", str(completion_file)],
+            check=True, stdout=subprocess.PIPE, text=True)
+        metrics = dict(line.split(",", 1) for line in process.stdout.splitlines() if "," in line)
         with completion_file.open(newline="", encoding="utf-8") as stream:
             completions = list(csv.DictReader(stream))
         latencies = [int(item["latency_ps"]) for item in completions]
@@ -40,8 +42,13 @@ def main() -> None:
             "tool": "hbmsim", "trace": trace.stem,
             "profile": args.profile,
             "requests": len(completions), "mean_latency_ps": sum(latencies) / len(latencies),
-            "p95_latency_ps": percentile_95(latencies),
+            "p50_latency_ps": percentile(latencies, 50),
+            "p95_latency_ps": percentile(latencies, 95),
             "throughput_bytes_per_ns": total_bytes * 1000 / duration,
+            "act_commands": metrics["act_commands"], "pre_commands": metrics["pre_commands"],
+            "read_commands": metrics["read_commands"], "write_commands": metrics["write_commands"],
+            "row_hits": metrics["row_hits"], "row_misses": metrics["row_closed"],
+            "row_conflicts": metrics["row_conflicts"],
         })
     with (result_dir / "hbmsim-summary.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=rows[0].keys())
