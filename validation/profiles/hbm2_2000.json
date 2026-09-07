@@ -55,7 +55,7 @@
     },
     "ramulator2": {
       "dram": "HBM2(org_preset=HBM2_2Gb,timing_preset=HBM2_2000Mbps)",
-      "address_mapper": "RoBaRaCoCh with hierarchical trace vectors from address_mapping",
+      "address_mapper": "PassThroughAddrMapper with hierarchical trace vectors from address_mapping",
       "refresh": "NoRefresh",
       "controller": "FRFCFSRowHit open-row",
       "known_difference": "The V0.3 timed-trace adapter is applied during reference CI to preserve absolute arrivals and emit callback-derived completion records."

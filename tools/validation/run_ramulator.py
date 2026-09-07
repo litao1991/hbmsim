@@ -54,7 +54,10 @@ def main() -> None:
             dram=dram, scheduler=ramulator.scheduler.FRFCFSRowHit(),
             refresh_manager=ramulator.refresh_manager.NoRefresh(),
             row_policy=ramulator.row_policy.Open(),
-            addr_mapper=ramulator.addr_mapper.RoBaRaCoCh(),
+            # The timed frontend supplies HBM2's complete hierarchical vector
+            # [Channel, PseudoChannel, SID, BankGroup, Bank, Row, Column].
+            # A flat-address mapper would overwrite it with req.addr (-1).
+            addr_mapper=ramulator.addr_mapper.PassThroughAddrMapper(),
             controller_plugins=[ramulator.controller_plugin.CommandCounter(
                 commands_to_count=["ACT", "PREpb", "RD", "WR"], path=str(command_file.resolve()))])
         memory = ramulator.memory_system.GenericDRAM(

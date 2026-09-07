@@ -14,6 +14,8 @@ The validation target is a common HBM2 micro-trace set run through HBMSim, Ramul
 
 The manifest fixes the SID/stack selector to zero, matching the single-SID Ramulator HBM2_2Gb baseline without introducing a superfluous HBMSim hierarchy. The validation input preparer derives DRAMSys HBM2 memspec and dense address-mapping JSON from that same organization and timing contract instead of using its stock 16Gb/8Hi dimensions. Its STL conversion removes only that constant SID bit, so all dynamic burst, pseudo-channel, bank-group, bank, column, and row fields remain identical. The Actions comparison carries the selected profile through `validation/reference-inputs/metadata.json`.
 
+Ramulator receives the same fields as a hierarchical vector in the order `Channel, PseudoChannel, SID, BankGroup, Bank, Row, Column`. It uses `PassThroughAddrMapper`; a flat-address mapper would overwrite this vector and invalidate bank/row-locality comparison.
+
 ## V0.3 alignment work
 
 HBMSim now reserves data transfer independently for each pseudo-channel. The common microtraces use a single 32 B HBM2 pseudo-channel payload at every request, so no tool-specific burst coalescing is required. The validation workflow applies [`patch_ramulator_timed_trace.py`](../tools/validation/patch_ramulator_timed_trace.py) to the pinned checkout before building it. The adapter changes only the test frontend: it reads absolute 1 ns arrival cycles, retains the request identity, writes callback-derived completion records and stops only after every request completes. It does not alter Ramulator's HBM2 DRAM model, controller, scheduler or timing rules.
