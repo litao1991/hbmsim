@@ -90,6 +90,7 @@ TICK_REPLACEMENT = """  void tick() override {
           const auto latency = completion - arrival;
           m_completion_file << id << ',' << (is_write ? "WRITE" : "READ") << ','
                             << arrival << ',' << completion << ',' << latency << '\\n';
+          m_completion_file.flush();
           ++m_completed_count;
         };
         if (m_memory_system->send(req)) {
