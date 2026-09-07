@@ -58,8 +58,12 @@ def main() -> None:
     work_dir.mkdir(parents=True, exist_ok=True)
     result_dir.mkdir(parents=True, exist_ok=True)
     rows = []
-    for config in sorted(Path("validation/reference-inputs/dramsys").glob("*.json")):
-        trace = config.stem
+    config_dir = Path("validation/reference-inputs/dramsys")
+    trace_names = sorted(trace.stem for trace in Path("validation/traces").glob("*.csv"))
+    for trace in trace_names:
+        config = config_dir / f"{trace}.json"
+        if not config.is_file():
+            raise RuntimeError(f"missing DRAMSys simulation config for {trace}: {config}")
         run_dir = work_dir / trace
         run_dir.mkdir(parents=True, exist_ok=True)
         log_file = run_dir / "dramsys.log"
