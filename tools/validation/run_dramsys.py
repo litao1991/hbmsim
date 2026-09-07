@@ -62,9 +62,13 @@ def main() -> None:
         trace = config.stem
         run_dir = work_dir / trace
         run_dir.mkdir(parents=True, exist_ok=True)
-        with (run_dir / "dramsys.log").open("w", encoding="utf-8") as stream:
-            subprocess.run([str(args.binary.resolve()), str(config.resolve())], cwd=run_dir,
-                           stdout=stream, stderr=subprocess.STDOUT, check=True)
+        log_file = run_dir / "dramsys.log"
+        with log_file.open("w", encoding="utf-8") as stream:
+            result = subprocess.run([str(args.binary.resolve()), str(config.resolve())], cwd=run_dir,
+                                    stdout=stream, stderr=subprocess.STDOUT, check=False)
+        if result.returncode != 0:
+            log_tail = log_file.read_text(encoding="utf-8", errors="replace")[-4000:]
+            raise RuntimeError(f"DRAMSys failed for {trace} (exit {result.returncode}):\n{log_tail}")
         databases = sorted(run_dir.glob("DRAMSys_*.tdb"))
         if len(databases) != 1:
             raise RuntimeError(f"expected one DRAMSys database for {trace}, found {databases}")
