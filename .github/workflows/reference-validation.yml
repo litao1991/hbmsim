@@ -20,7 +20,7 @@ jobs:
       - name: Generate HBMSim baseline metrics
         run: |
           python3 tools/validation/generate_microtraces.py
-          python3 tools/validation/summarize_hbmsim.py ./build/hbmsim
+          python3 tools/validation/summarize_hbmsim.py ./build/hbmsim --profile hbm2_2000
       - name: Fetch pinned reference sources
         run: |
           git clone https://github.com/CMU-SAFARI/ramulator2.git reference-ramulator2
@@ -35,11 +35,11 @@ jobs:
           cmake -S reference-ramulator2 -B build-ramulator2 -G Ninja -DRAMULATOR_PYTHON_BINDINGS=ON
           cmake --build build-ramulator2
       - name: Run Ramulator 2.1 HBM2 traces
-        run: PYTHONPATH="$GITHUB_WORKSPACE/reference-ramulator2/python" python3 tools/validation/run_ramulator.py
+        run: PYTHONPATH="$GITHUB_WORKSPACE/reference-ramulator2/python" python3 tools/validation/run_ramulator.py --profile validation/profiles/hbm2_2000.json
       - name: Build DRAMSys
         run: cmake -S reference-dramsys -B build-dramsys -G Ninja -DDRAMSYS_BUILD_TRACE_ANALYZER=OFF && cmake --build build-dramsys
       - name: Run DRAMSys HBM2 traces
-        run: python3 tools/validation/run_dramsys.py ./build-dramsys/bin/DRAMSys
+        run: python3 tools/validation/run_dramsys.py ./build-dramsys/bin/DRAMSys --profile validation/profiles/hbm2_2000.json
       - name: Compose three-simulator comparison
         run: python3 tools/validation/compose_comparison.py
       - name: Publish comparison in Actions summary

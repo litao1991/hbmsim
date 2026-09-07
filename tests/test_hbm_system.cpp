@@ -31,6 +31,29 @@ hbmsim::HbmConfig base_config() {
 }  // namespace
 
 int main() {
+  // V0.2: the HBM2_2000 profile is the explicit validation baseline.
+  {
+    const auto config = hbmsim::HbmConfig::hbm2_2000();
+    assert(config.standard == hbmsim::HbmStandard::Hbm2);
+    assert(config.topology.pseudo_channels_per_channel == 2);
+    assert(config.topology.bank_groups_per_pseudo_channel == 4);
+    assert(config.topology.banks_per_bank_group == 4);
+    assert(config.address_interleave_bytes == 32);
+    assert(config.physical_burst_bytes == 32);
+    assert(config.timing.t_rcd == 14'000);
+    assert(config.timing.t_rc == 48'000);
+    assert(config.timing.t_rfc == 260'000);
+    hbmsim::HbmSystem system(config);
+    const auto mapped = system.map_address((1ULL << 5) | (2ULL << 6) |
+                                           (3ULL << 8) | (1ULL << 10) |
+                                           (4ULL << 11) | (5ULL << 16));
+    assert(mapped.pseudo_channel == 1);
+    assert(mapped.bank_group == 2);
+    assert(mapped.bank == 3);
+    assert(mapped.column == 4);
+    assert(mapped.row == 5);
+  }
+
   // H2: a closed-row request plans ACT then waits tRCD before RD.
   {
     hbmsim::HbmSystem system(base_config());

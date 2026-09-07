@@ -26,14 +26,32 @@ std::uint64_t parse_u64(const std::string& value) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc != 2 && argc != 4) {
-    std::cerr << "usage: hbmsim TRACE.csv [--completions FILE.csv]\n"
+  if (argc < 2) {
+    std::cerr << "usage: hbmsim TRACE.csv [--profile hbm2_2000] [--completions FILE.csv]\n"
                  "columns: arrival_ps,op,address,size_bytes[,client]\n";
     return 2;
   }
-  if (argc == 4 && std::string(argv[2]) != "--completions") {
-    std::cerr << "expected --completions FILE.csv\n";
-    return 2;
+  std::string completion_path;
+  hbmsim::HbmConfig config;
+  for (int index = 2; index < argc; index += 2) {
+    if (index + 1 >= argc) {
+      std::cerr << "option " << argv[index] << " requires a value\n";
+      return 2;
+    }
+    const std::string option(argv[index]);
+    const std::string value(argv[index + 1]);
+    if (option == "--completions") {
+      completion_path = value;
+    } else if (option == "--profile") {
+      if (value != "hbm2_2000") {
+        std::cerr << "unknown profile: " << value << '\n';
+        return 2;
+      }
+      config = hbmsim::HbmConfig::hbm2_2000();
+    } else {
+      std::cerr << "unknown option: " << option << '\n';
+      return 2;
+    }
   }
 
   std::ifstream trace(argv[1]);
@@ -42,7 +60,7 @@ int main(int argc, char** argv) {
     return 2;
   }
 
-  hbmsim::HbmSystem system;
+  hbmsim::HbmSystem system(config);
   std::string line;
   std::uint64_t line_number = 0;
   std::uint64_t id = 1;
@@ -75,8 +93,8 @@ int main(int argc, char** argv) {
   }
 
   system.run();
-  if (argc == 4) {
-    std::ofstream completions(argv[3]);
+  if (!completion_path.empty()) {
+    std::ofstream completions(completion_path);
     if (!completions) {
       std::cerr << "cannot write completions: " << argv[3] << '\n';
       return 2;

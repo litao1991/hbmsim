@@ -1,6 +1,8 @@
 /build/
 /build-reference/
-/validation/
+/validation/*
+!/validation/profiles/
+!/validation/profiles/hbm2_2000.json
 /out/
 /.cache/
 *.swp

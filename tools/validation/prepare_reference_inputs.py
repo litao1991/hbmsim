@@ -31,7 +31,12 @@ def hbm2_vector(address: int) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dramsys-root", type=Path, required=True)
+    parser.add_argument("--profile", type=Path,
+                        default=Path("validation/profiles/hbm2_2000.json"))
     args = parser.parse_args()
+    profile = json.loads(args.profile.read_text(encoding="utf-8"))
+    if profile.get("profile_id") != "hbm2_2000":
+        raise ValueError("reference input preparation currently supports hbm2_2000 only")
     trace_dir = Path("validation/traces")
     ramulator_dir = Path("validation/reference-inputs/ramulator2")
     dramsys_dir = Path("validation/reference-inputs/dramsys")
@@ -65,10 +70,12 @@ def main() -> None:
         (dramsys_dir / f"{trace.stem}.json").write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 
     metadata = {
-        "neutral_trace_format": "arrival_ps,op,address,size_bytes",
+        "profile_id": profile["profile_id"],
+        "profile_manifest": str(args.profile),
+        "neutral_trace_format": profile["request_contract"]["trace_format"],
         "ramulator2": {"standard": "HBM2_2Gb / HBM2_2000Mbps", "input": "ReadWriteTrace hierarchical address vector", "arrival_model": "one accepted request per 1 ns frontend tick"},
         "dramsys": {"standard": "stock configs/memspec/HBM2.json", "input": "absolute STL trace at 1000 MHz", "arrival_model": "arrival_ps quantized to 1 ns"},
-        "comparison_status": "same operation/address sequence; timing and HBM2 organisation are not yet fully harmonized",
+        "comparison_status": profile["comparison_status"],
     }
     Path("validation/reference-inputs/metadata.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 

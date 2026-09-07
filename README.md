@@ -34,4 +34,4 @@ ctest --test-dir build --output-on-failure
 ./build/hbmsim traces/h0_smoke.csv
 ```
 
-H6 adds all-bank/per-bank refresh and the HBM4 `RFMpb` baseline. V0.1 correctness hardening is complete: idle refresh cannot leave an invalid open-row hit, and coalescing cannot cross a mapped memory resource. V0.2 will introduce a common HBM2 profile manifest; V0.3 will publish strict, like-for-like numerical comparison. The exact source alignment and current reference-build status are documented in [docs/H6_REFERENCE_VALIDATION.md](docs/H6_REFERENCE_VALIDATION.md).
+H6 adds all-bank/per-bank refresh and the HBM4 `RFMpb` baseline. V0.1 correctness hardening is complete: idle refresh cannot leave an invalid open-row hit, and coalescing cannot cross a mapped memory resource. V0.2 provides the versioned [`hbm2_2000`](validation/profiles/hbm2_2000.json) profile manifest and an explicit CLI profile; V0.3 will remove its recorded remaining differences before publishing strict, like-for-like numerical comparison. The exact source alignment and current reference-build status are documented in [docs/H6_REFERENCE_VALIDATION.md](docs/H6_REFERENCE_VALIDATION.md).

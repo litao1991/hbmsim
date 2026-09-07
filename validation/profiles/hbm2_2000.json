@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "profile_id": "hbm2_2000",
+  "purpose": "Common, auditable HBM2 baseline for HBMSim, Ramulator 2.1, and DRAMSys validation.",
+  "request_contract": {
+    "trace_format": "arrival_ps,op,address,size_bytes",
+    "operations": ["READ", "WRITE"],
+    "arrival_time_unit_ps": 1000,
+    "request_size_bytes": 64,
+    "address_unit_bytes": 1
+  },
+  "hbm2_organization": {
+    "data_rate_mbps": 2000,
+    "tck_ps": 1000,
+    "channels": 1,
+    "pseudo_channels_per_channel": 2,
+    "bank_groups_per_pseudo_channel": 4,
+    "banks_per_bank_group": 4,
+    "rows_per_bank": 16384,
+    "columns_per_row": 32,
+    "address_interleave_bytes": 32,
+    "physical_burst_bytes": 32
+  },
+  "timing_ps": {
+    "t_rcd": 14000,
+    "t_rp": 14000,
+    "t_cl": 14000,
+    "t_ras": 34000,
+    "t_rc": 48000,
+    "t_ccd": 2000,
+    "t_rrd": 4000,
+    "t_faw": 15000,
+    "t_wtr": 13000,
+    "t_rtw": 15000,
+    "t_rfc": 260000,
+    "t_rfcpb": 160000
+  },
+  "address_mapping": {
+    "name": "HBM2 pseudo-channel BRC",
+    "burst_bits": [0, 1, 2, 3, 4],
+    "pseudo_channel_bit": [5],
+    "bank_group_bits": [6, 7],
+    "bank_bits": [8, 9],
+    "sid_or_stack_bit": [10],
+    "column_bits": [11, 12, 13, 14, 15],
+    "row_bits": [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+  },
+  "tool_bindings": {
+    "hbmsim": {
+      "cli_profile": "hbm2_2000",
+      "refresh": "disabled",
+      "controller": "FR-FCFS open-row",
+      "known_difference": "The current channel-level data-bus reservation does not yet model two independent pseudo-channel data buses; the HBM2 SID bit is not yet represented as a hierarchy level."
+    },
+    "ramulator2": {
+      "dram": "HBM2(org_preset=HBM2_2Gb,timing_preset=HBM2_2000Mbps)",
+      "address_mapper": "RoBaRaCoCh with hierarchical trace vectors from address_mapping",
+      "refresh": "NoRefresh",
+      "controller": "FRFCFSRowHit open-row",
+      "known_difference": "ReadWriteTrace has no size field and treats each converted line as its fixed HBM2 request payload; V0.3 must expand every neutral 64 B request consistently."
+    },
+    "dramsys": {
+      "memspec": "configs/memspec/HBM2.json",
+      "address_mapping": "configs/addressmapping/am_hbm2_16Gb-8H_pc_brc.json",
+      "refresh": "stock controller configuration",
+      "controller": "stock fr_fcfs.json",
+      "known_difference": "The stock DRAMSys HBM2 memory specification has a different density/topology. V0.3 must generate a profile-specific memspec before numerical equivalence is claimed."
+    }
+  },
+  "comparison_status": "V0.2 common profile contract: timing and request semantics are explicit. V0.3 is required to normalize burst expansion and remove the recorded SID, data-bus, and DRAMSys density differences."
+}

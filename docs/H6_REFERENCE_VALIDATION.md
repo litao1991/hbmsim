@@ -4,6 +4,16 @@
 
 The validation target is a common HBM2 micro-trace set run through HBMSim, Ramulator 2.1, and DRAMSys. The published comparison must report throughput, mean/p95 latency, and row hit/closed/conflict counts, and must identify every intentional abstraction mismatch.
 
+## V0.2 common HBM2 profile
+
+[`validation/profiles/hbm2_2000.json`](../validation/profiles/hbm2_2000.json) is the versioned profile contract. It pins the Ramulator HBM2 2Gb / 2000 Mbps timing basis, the pseudo-channel BRC address-bit layout used by DRAMSys, the neutral request format, and each tool's controller/refresh binding. HBMSim runs it explicitly with:
+
+```sh
+./build/hbmsim validation/traces/row_hit.csv --profile hbm2_2000
+```
+
+The manifest also names the remaining limitations that prevent a strict V0.3 claim: HBMSim currently reserves one channel-level data bus rather than two independent pseudo-channel buses and does not model HBM2 SID, Ramulator's trace frontend has no request-size field, and the stock DRAMSys HBM2 memory specification differs in density/topology. The Actions comparison carries this scope automatically through `validation/reference-inputs/metadata.json`; it must not be interpreted as numerical equivalence until those differences are removed.
+
 ## HBM4/RFM source alignment
 
 HBMSim's `HbmTimingSpec::hbm4_8000()` is transcribed from the public Ramulator 2.1 `python/ramulator/dram/hbm4.py` preset `HBM4_8000Mbps` at pinned revision `72427a1bba3771564c4fb0e494ba02242fd1eaa7`.

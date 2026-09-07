@@ -28,6 +28,7 @@ struct HbmConfig {
   RefreshPolicy refresh_policy = RefreshPolicy::AllBank;
   std::uint64_t channel_bandwidth_bytes_per_ns = 32;
   std::uint64_t address_interleave_bytes = 64;
+  AddressMapping address_mapping = AddressMapping::Linear;
   std::uint32_t columns_per_row = 128;
   std::uint32_t rows_per_bank = 16'384;
   std::size_t write_drain_high_watermark = 16;
@@ -41,6 +42,7 @@ struct HbmConfig {
   std::uint64_t simulation_access_granularity_bytes = 0;
 
   void validate() const;
+  [[nodiscard]] static HbmConfig hbm2_2000();
   [[nodiscard]] static HbmConfig hbm4_8000();
 };
 

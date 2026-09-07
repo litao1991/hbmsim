@@ -61,10 +61,43 @@ HbmConfig HbmConfig::hbm4_8000() {
   return config;
 }
 
+HbmConfig HbmConfig::hbm2_2000() {
+  HbmConfig config;
+  config.standard = HbmStandard::Hbm2;
+  config.topology.channels_per_stack = 1;
+  config.topology.pseudo_channels_per_channel = 2;
+  config.topology.bank_groups_per_pseudo_channel = 4;
+  config.topology.banks_per_bank_group = 4;
+  config.columns_per_row = 32;
+  config.rows_per_bank = 16'384;
+  config.address_interleave_bytes = 32;
+  config.address_mapping = AddressMapping::Hbm2PseudoChannelBrc;
+  config.physical_burst_bytes = 32;
+  // HBM2_2000Mbps values from Ramulator 2.1's pinned HBM2 preset.
+  config.timing.t_rcd = 14'000;
+  config.timing.t_rp = 14'000;
+  config.timing.t_cl = 14'000;
+  config.timing.t_ras = 34'000;
+  config.timing.t_rc = 48'000;
+  config.timing.t_ccd = 2'000;
+  config.timing.t_rrd = 4'000;
+  config.timing.t_faw = 15'000;
+  config.timing.t_wtr = 13'000;
+  config.timing.t_rtw = 15'000;
+  config.timing.t_rfc = 260'000;
+  config.timing.t_rfcpb = 160'000;
+  config.timing.t_rfmab = config.timing.t_rfc;
+  config.timing.t_rfmpb = config.timing.t_rfcpb;
+  // A 64-bit pseudo-channel transfers one 32 B burst in two 1 ns beats.
+  config.channel_bandwidth_bytes_per_ns = 16;
+  return config;
+}
+
 HbmSystem::HbmSystem(HbmConfig config)
     : config_(config),
       address_mapper_(config.topology, config.address_interleave_bytes,
-                      config.columns_per_row, config.rows_per_bank),
+                      config.columns_per_row, config.rows_per_bank,
+                      config.address_mapping),
       timing_engine_(config.timing) {
   config_.validate();
   channels_.resize(config_.topology.channel_count());

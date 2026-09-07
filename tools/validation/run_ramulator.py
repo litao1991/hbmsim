@@ -30,7 +30,12 @@ def number(stats: dict, name: str) -> float:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--drain-cycles", type=int, default=4096)
+    parser.add_argument("--profile", type=Path,
+                        default=Path("validation/profiles/hbm2_2000.json"))
     args = parser.parse_args()
+    profile = json.loads(args.profile.read_text(encoding="utf-8"))
+    if profile.get("profile_id") != "hbm2_2000":
+        raise ValueError("Ramulator runner currently supports hbm2_2000 only")
     import ramulator
 
     trace_dir = Path("validation/reference-inputs/ramulator2")
@@ -57,6 +62,7 @@ def main() -> None:
         completed = int(number(stats, "num_read_reqs_served") + number(stats, "num_write_reqs_served"))
         rows.append({
             "tool": "ramulator2", "trace": trace.stem,
+            "profile": profile["profile_id"],
             "requests": len(trace.read_text(encoding="utf-8").splitlines()),
             "completed_requests": completed,
             "mean_latency_ps": number(stats, "avg_read_latency") * 1000,

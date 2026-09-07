@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -18,7 +19,12 @@ def percentile_95(values: list[int]) -> float:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("binary", type=Path)
+    parser.add_argument("--profile", type=Path,
+                        default=Path("validation/profiles/hbm2_2000.json"))
     args = parser.parse_args()
+    profile = json.loads(args.profile.read_text(encoding="utf-8"))
+    if profile.get("profile_id") != "hbm2_2000":
+        raise ValueError("DRAMSys runner currently supports hbm2_2000 only")
     work_dir = Path("validation/dramsys-runs")
     result_dir = Path("validation/results")
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -46,7 +52,8 @@ def main() -> None:
         last_completion = max(int(end) for _generated, _begin, end, _size in records)
         total_bytes = sum(int(size) for _generated, _begin, _end, size in records)
         rows.append({
-            "tool": "dramsys", "trace": trace, "requests": len(records),
+            "tool": "dramsys", "profile": profile["profile_id"],
+            "trace": trace, "requests": len(records),
             "completed_requests": len(records), "mean_latency_ps": sum(latencies) / len(latencies),
             "p95_latency_ps": percentile_95(latencies),
             "throughput_bytes_per_ns": total_bytes * 1000 / max(1, last_completion - first_arrival),

@@ -6,6 +6,8 @@
 
 namespace hbmsim {
 
+enum class AddressMapping { Linear, Hbm2PseudoChannelBrc };
+
 struct HbmAddress {
   std::uint32_t stack = 0;
   std::uint32_t channel = 0;
@@ -25,7 +27,8 @@ struct HbmAddress {
 class HbmAddressMapper {
  public:
   HbmAddressMapper(HbmTopology topology, std::uint64_t interleave_bytes,
-                   std::uint32_t columns_per_row, std::uint32_t rows_per_bank);
+                   std::uint32_t columns_per_row, std::uint32_t rows_per_bank,
+                   AddressMapping mapping = AddressMapping::Linear);
 
   [[nodiscard]] HbmAddress map(std::uint64_t address) const;
   [[nodiscard]] HbmAddress bank_address(std::uint32_t flat_bank) const;
@@ -39,6 +42,7 @@ class HbmAddressMapper {
   std::uint64_t interleave_bytes_;
   std::uint32_t columns_per_row_;
   std::uint32_t rows_per_bank_;
+  AddressMapping mapping_;
 };
 
 }  // namespace hbmsim
