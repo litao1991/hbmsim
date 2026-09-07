@@ -9,7 +9,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(hbmsim_core
   src/hbm_system.cpp
   src/controller/command_planner.cpp
+  src/controller/hbm_controller.cpp
+  src/controller/refresh_manager.cpp
+  src/controller/row_policy.cpp
   src/controller/scheduler.cpp
+  src/dram/hbm_standard.cpp
   src/kernel/event_queue.cpp
   src/mapping/address_mapper.cpp
   src/timing/timing_engine.cpp

@@ -73,6 +73,11 @@ std::uint32_t HbmAddressMapper::bank_count() const {
          topology_.bank_groups_per_pseudo_channel * topology_.banks_per_bank_group;
 }
 
+std::uint64_t HbmAddressMapper::next_mapping_boundary(std::uint64_t address) const {
+  const auto remainder = address % interleave_bytes_;
+  return interleave_bytes_ - remainder;
+}
+
 HbmAddress HbmAddressMapper::bank_address(std::uint32_t flat_bank) const {
   if (flat_bank >= bank_count()) throw std::out_of_range("flat bank is outside topology");
   HbmAddress result;

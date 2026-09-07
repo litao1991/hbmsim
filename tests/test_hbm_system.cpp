@@ -59,10 +59,18 @@ int main() {
   {
     auto config = hbmsim::HbmConfig::hbm2_2000();
     config.timing.t_rcd = 0;
+    config.timing.t_rcd_rd = 0;
+    config.timing.t_rcd_wr = 0;
     config.timing.t_cl = 0;
     config.timing.t_ccd = 0;
+    config.timing.t_ccd_s = 0;
+    config.timing.t_ccd_l = 0;
     config.timing.t_rrd = 0;
+    config.timing.t_rrd_s = 0;
+    config.timing.t_rrd_l = 0;
     config.timing.t_faw = 0;
+    config.timing.t_wtr_s = 0;
+    config.timing.t_wtr_l = 0;
     config.channel_bandwidth_bytes_per_ns = 16;
     hbmsim::HbmSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 32, 0, 0}).accepted());
@@ -72,6 +80,17 @@ int main() {
     assert(system.completions()[0].completion_time == 2'000);
     assert(system.completions()[1].completion_time == 2'000);
     assert(system.stats().channels[0].data_bus_busy_time == 4'000);
+  }
+
+  // V0.5: HBM3 is a resolved standard profile, not an enum-only label.
+  {
+    const auto config = hbmsim::HbmConfig::hbm3_6400();
+    assert(config.standard == hbmsim::HbmStandard::Hbm3);
+    assert(config.timing.use_extended_hbm_timing);
+    assert(config.timing.t_rcd_rd == 19'375);
+    assert(config.timing.t_rcd_wr == 9'375);
+    assert(config.timing.t_ccd_l == 2'500);
+    assert(config.timing.t_rfcpb == 200'000);
   }
 
   // H2: a closed-row request plans ACT then waits tRCD before RD.

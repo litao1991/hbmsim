@@ -27,7 +27,7 @@ std::uint64_t parse_u64(const std::string& value) {
 
 int main(int argc, char** argv) {
   if (argc < 2) {
-    std::cerr << "usage: hbmsim TRACE.csv [--profile hbm2_2000] [--completions FILE.csv]\n"
+    std::cerr << "usage: hbmsim TRACE.csv [--profile hbm2_2000|hbm3_6400] [--completions FILE.csv]\n"
                  "columns: arrival_ps,op,address,size_bytes[,client]\n";
     return 2;
   }
@@ -43,11 +43,14 @@ int main(int argc, char** argv) {
     if (option == "--completions") {
       completion_path = value;
     } else if (option == "--profile") {
-      if (value != "hbm2_2000") {
+      if (value == "hbm2_2000") {
+        config = hbmsim::HbmConfig::hbm2_2000();
+      } else if (value == "hbm3_6400") {
+        config = hbmsim::HbmConfig::hbm3_6400();
+      } else {
         std::cerr << "unknown profile: " << value << '\n';
         return 2;
       }
-      config = hbmsim::HbmConfig::hbm2_2000();
     } else {
       std::cerr << "unknown option: " << option << '\n';
       return 2;

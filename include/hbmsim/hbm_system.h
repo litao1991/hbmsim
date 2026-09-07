@@ -1,7 +1,11 @@
 #pragma once
 
 #include "hbmsim/controller/command_planner.h"
+#include "hbmsim/controller/hbm_controller.h"
+#include "hbmsim/controller/refresh_manager.h"
 #include "hbmsim/controller/scheduler.h"
+#include "hbmsim/controller/row_policy.h"
+#include "hbmsim/dram/hbm_standard.h"
 #include "hbmsim/kernel/event_queue.h"
 #include "hbmsim/mapping/address_mapper.h"
 #include "hbmsim/media/bank_state.h"
@@ -11,6 +15,7 @@
 
 #include <deque>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
@@ -19,7 +24,6 @@
 namespace hbmsim {
 
 enum class HbmStandard { Hbm2, Hbm3, Hbm4 };
-enum class RefreshPolicy { AllBank, PerBank };
 
 struct HbmConfig {
   HbmTopology topology{};
@@ -45,6 +49,7 @@ struct HbmConfig {
 
   void validate() const;
   [[nodiscard]] static HbmConfig hbm2_2000();
+  [[nodiscard]] static HbmConfig hbm3_6400();
   [[nodiscard]] static HbmConfig hbm4_8000();
 };
 
@@ -91,21 +96,11 @@ class HbmSystem {
     return completions_;
   }
   [[nodiscard]] HbmAddress map_address(std::uint64_t address) const {
-    return address_mapper_.map(address);
+    return address_mapper_->map(address);
   }
 
  private:
-  struct Access {
-    TransactionId parent_id = 0;
-    HbmOp op = HbmOp::Read;
-    HbmAddress address{};
-    std::uint64_t size_bytes = 0;
-    SimTime arrival_time = 0;
-    ClientId client = 0;
-    std::uint64_t sequence = 0;
-    HbmAccessClass access_class = HbmAccessClass::RowClosed;
-    bool activated = false;
-  };
+  using Access = HbmAccess;
   struct ParentRequest {
     HbmTransaction transaction{};
     std::uint64_t remaining_accesses = 0;
@@ -113,31 +108,8 @@ class HbmSystem {
     std::uint32_t completion_channel = 0;
     HbmAccessClass last_access_class = HbmAccessClass::RowClosed;
   };
-  struct ChannelState {
-    // HBM pseudo-channels have independent data paths.  Channel-wide timing
-    // constraints remain in the timing engine; only data transfer ownership
-    // is tracked per pseudo-channel here.
-    std::vector<SimTime> data_bus_ready_at;
-    SimTime refresh_busy_until = 0;
-    std::deque<Access> read_queue;
-    std::deque<Access> write_queue;
-    std::optional<SimTime> wakeup_at;
-    std::optional<SimTime> refresh_due_at;
-    bool draining_writes = false;
-    bool refresh_pending = false;
-    std::uint64_t outstanding_accesses = 0;
-    std::uint32_t next_per_bank_refresh = 0;
-    // `next_refresh_due` remains meaningful while idle.  `refresh_due_at`
-    // exists only when a corresponding event is actually queued.
-    std::optional<SimTime> next_refresh_due;
-  };
-  struct Candidate {
-    bool is_write = false;
-    std::size_t index = 0;
-    HbmCommand command = HbmCommand::Act;
-    SimTime ready_at = 0;
-    int priority = 0;
-  };
+  using ChannelState = HbmControllerChannelState;
+  using Candidate = HbmControllerCandidate;
   struct MaintenanceCandidate {
     HbmCommand command = HbmCommand::RefreshPerBank;
     std::uint32_t bank = 0;
@@ -149,8 +121,6 @@ class HbmSystem {
       const HbmTransaction& transaction) const;
   [[nodiscard]] std::optional<Candidate> choose_next(std::uint32_t channel,
                                                        SimTime now) const;
-  [[nodiscard]] std::optional<Candidate> choose_with_policy(
-      std::uint32_t channel, SimTime now) const;
   [[nodiscard]] std::optional<MaintenanceCandidate> choose_maintenance(
       std::uint32_t channel, SimTime now) const;
   void admit(const HbmTransaction& transaction);
@@ -170,9 +140,12 @@ class HbmSystem {
 
   HbmConfig config_;
   EventQueue event_queue_;
-  HbmAddressMapper address_mapper_;
+  std::unique_ptr<IHbmAddressMapper> address_mapper_;
   HbmTimingEngine timing_engine_;
   HbmCommandPlanner command_planner_;
+  std::unique_ptr<IRowPolicy> row_policy_;
+  std::unique_ptr<IRefreshManager> refresh_manager_;
+  HbmController controller_;
   std::vector<ChannelState> channels_;
   std::vector<HbmBankState> banks_;
   HbmStats stats_;

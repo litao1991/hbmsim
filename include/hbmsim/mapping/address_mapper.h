@@ -35,20 +35,37 @@ struct HbmAddress {
   }
 };
 
+// Controller-facing mapping boundary.  A non-HBM standard can implement its
+// own hierarchy and mapping arithmetic without leaking either into the
+// controller or transaction splitter.
+class IHbmAddressMapper {
+ public:
+  virtual ~IHbmAddressMapper() = default;
+  [[nodiscard]] virtual HbmAddress map(std::uint64_t address) const = 0;
+  [[nodiscard]] virtual HbmAddress bank_address(
+      std::uint32_t flat_bank) const = 0;
+  [[nodiscard]] virtual std::uint32_t bank_count() const = 0;
+  [[nodiscard]] virtual std::uint64_t interleave_bytes() const noexcept = 0;
+  [[nodiscard]] virtual std::uint64_t next_mapping_boundary(
+      std::uint64_t address) const = 0;
+};
+
 // H0/H1 use a stable, channel-interleaved mapping.  Its explicit hierarchy
 // makes later swappable RoBaBgCoCh and XOR policies an additive change.
-class HbmAddressMapper {
+class HbmAddressMapper final : public IHbmAddressMapper {
  public:
   HbmAddressMapper(HbmTopology topology, std::uint64_t interleave_bytes,
                    std::uint32_t columns_per_row, std::uint32_t rows_per_bank,
                    AddressMapping mapping = AddressMapping::Linear);
 
-  [[nodiscard]] HbmAddress map(std::uint64_t address) const;
-  [[nodiscard]] HbmAddress bank_address(std::uint32_t flat_bank) const;
-  [[nodiscard]] std::uint32_t bank_count() const;
-  [[nodiscard]] std::uint64_t interleave_bytes() const noexcept {
+  [[nodiscard]] HbmAddress map(std::uint64_t address) const override;
+  [[nodiscard]] HbmAddress bank_address(std::uint32_t flat_bank) const override;
+  [[nodiscard]] std::uint32_t bank_count() const override;
+  [[nodiscard]] std::uint64_t interleave_bytes() const noexcept override {
     return interleave_bytes_;
   }
+  [[nodiscard]] std::uint64_t next_mapping_boundary(
+      std::uint64_t address) const override;
 
  private:
   HbmTopology topology_;

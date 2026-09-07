@@ -3,6 +3,37 @@
 namespace hbmsim {
 
 std::vector<TimingConstraint> HbmTimingSpec::constraints() const {
+  if (use_extended_hbm_timing) {
+    return {
+        {HbmCommand::Act, HbmCommand::Read, TimingScope::Bank, 1, t_rcd_rd},
+        {HbmCommand::Act, HbmCommand::Write, TimingScope::Bank, 1, t_rcd_wr},
+        {HbmCommand::Pre, HbmCommand::Act, TimingScope::Bank, 1, t_rp},
+        {HbmCommand::Act, HbmCommand::Pre, TimingScope::Bank, 1, t_ras},
+        {HbmCommand::Act, HbmCommand::Act, TimingScope::Bank, 1, t_rc},
+        {HbmCommand::Read, HbmCommand::Pre, TimingScope::Bank, 1, t_rtp},
+        {HbmCommand::Write, HbmCommand::Pre, TimingScope::Bank, 1,
+         t_cwl + t_bl + t_wr},
+        {HbmCommand::Read, HbmCommand::Read, TimingScope::PseudoChannel, 1, t_ccd_s},
+        {HbmCommand::Write, HbmCommand::Write, TimingScope::PseudoChannel, 1, t_ccd_s},
+        {HbmCommand::Read, HbmCommand::Write, TimingScope::PseudoChannel, 1, t_rtw},
+        {HbmCommand::Write, HbmCommand::Read, TimingScope::PseudoChannel, 1,
+         t_cwl + t_bl + t_wtr_s},
+        {HbmCommand::Read, HbmCommand::Read, TimingScope::BankGroup, 1, t_ccd_l},
+        {HbmCommand::Write, HbmCommand::Write, TimingScope::BankGroup, 1, t_ccd_l},
+        {HbmCommand::Write, HbmCommand::Read, TimingScope::BankGroup, 1,
+         t_cwl + t_bl + t_wtr_l},
+        {HbmCommand::Act, HbmCommand::Act, TimingScope::BankGroup, 1, t_rrd_l},
+        {HbmCommand::Act, HbmCommand::Act, TimingScope::PseudoChannel, 1, t_rrd_s},
+        {HbmCommand::Act, HbmCommand::Act, TimingScope::PseudoChannel, 4, t_faw},
+        {HbmCommand::Pre, HbmCommand::Pre, TimingScope::PseudoChannel, 1, t_ppd},
+        {HbmCommand::RefreshAllBank, HbmCommand::Act, TimingScope::Channel, 1, t_rfc},
+        {HbmCommand::RefreshPerBank, HbmCommand::Act, TimingScope::Bank, 1, t_rfcpb},
+        {HbmCommand::RfmAllBank, HbmCommand::Act, TimingScope::Channel, 1, t_rfmab},
+        {HbmCommand::RfmPerBank, HbmCommand::Act, TimingScope::Bank, 1, t_rfmpb},
+        {HbmCommand::Act, HbmCommand::RefreshPerBank, TimingScope::Bank, 1, t_rc},
+        {HbmCommand::Act, HbmCommand::RfmPerBank, TimingScope::Bank, 1, t_rc},
+    };
+  }
   return {
       {HbmCommand::Act, HbmCommand::Read, TimingScope::Bank, 1, t_rcd},
       {HbmCommand::Act, HbmCommand::Write, TimingScope::Bank, 1, t_rcd},

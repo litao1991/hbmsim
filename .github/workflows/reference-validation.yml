@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   build-references:
@@ -42,6 +44,8 @@ jobs:
         run: python3 tools/validation/run_dramsys.py ./build-dramsys/bin/DRAMSys --profile validation/profiles/hbm2_2000.json
       - name: Compose three-simulator comparison
         run: python3 tools/validation/compose_comparison.py
+      - name: Enforce H6 request-completion gate
+        run: python3 tools/validation/assert_h6_gate.py
       - name: Publish comparison in Actions summary
         run: |
           echo '## Three-simulator HBM microtrace comparison' >> "$GITHUB_STEP_SUMMARY"
