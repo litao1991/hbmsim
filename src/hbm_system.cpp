@@ -293,6 +293,9 @@ void HbmSystem::schedule_controller_wake(std::uint32_t channel, SimTime when) {
 
 std::optional<HbmSystem::Candidate> HbmSystem::choose_next(std::uint32_t channel,
                                                              SimTime now) const {
+  if (config_.scheduler != SchedulerKind::FrFcfs) {
+    return choose_with_policy(channel, now);
+  }
   const auto& state = channels_.at(channel);
   const auto choose_from = [&](const std::deque<Access>& queue, bool is_write,
                                std::optional<Candidate>& best_ready,
@@ -362,6 +365,40 @@ std::optional<HbmSystem::Candidate> HbmSystem::choose_next(std::uint32_t channel
     if (waiting_data.has_value()) return waiting_data;
   }
   return best_ready.has_value() ? best_ready : earliest;
+}
+
+std::optional<HbmSystem::Candidate> HbmSystem::choose_with_policy(
+    std::uint32_t channel, SimTime now) const {
+  const auto& state = channels_.at(channel);
+  const bool prefer_writes = state.draining_writes;
+  const auto& queue = prefer_writes ? state.write_queue : state.read_queue;
+  const auto& fallback = prefer_writes ? state.read_queue : state.write_queue;
+  const bool is_write = prefer_writes;
+  const auto& selected_queue = queue.empty() ? fallback : queue;
+  const bool selected_is_write = queue.empty() ? !is_write : is_write;
+  std::vector<SchedulerCandidate> candidates;
+  candidates.reserve(selected_queue.size());
+  for (std::size_t index = 0; index < selected_queue.size(); ++index) {
+    const auto& access = selected_queue[index];
+    const auto& bank = banks_.at(access.address.flat_bank);
+    const auto command = command_planner_.next(access.op, access.address.row, bank);
+    const bool data = is_data_command(command);
+    const bool row_hit = data && bank.open_row.has_value() &&
+                         *bank.open_row == access.address.row && !access.activated;
+    const auto dram_command = command == HbmCommand::Act ? DramCommand::Activate :
+                              command == HbmCommand::Pre ? DramCommand::Precharge :
+                              command == HbmCommand::Read ? DramCommand::Read : DramCommand::Write;
+    candidates.push_back({index, selected_is_write, dram_command,
+                          timing_engine_.earliest_issue(command, access.address, now),
+                          access.sequence, row_hit, data});
+  }
+  const auto selected = scheduler_for(config_.scheduler).choose(candidates, now);
+  if (!selected.has_value()) return std::nullopt;
+  const auto command = selected->command == DramCommand::Activate ? HbmCommand::Act :
+                       selected->command == DramCommand::Precharge ? HbmCommand::Pre :
+                       selected->command == DramCommand::Read ? HbmCommand::Read : HbmCommand::Write;
+  return Candidate{selected->is_write, selected->queue_index, command,
+                   selected->ready_at, selected->row_hit ? 3 : selected->data_command ? 2 : 1};
 }
 
 std::optional<HbmSystem::MaintenanceCandidate> HbmSystem::choose_maintenance(

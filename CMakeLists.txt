@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(hbmsim_core
   src/hbm_system.cpp
   src/controller/command_planner.cpp
+  src/controller/scheduler.cpp
   src/kernel/event_queue.cpp
   src/mapping/address_mapper.cpp
   src/timing/timing_engine.cpp
@@ -33,4 +34,8 @@ if(BUILD_TESTING)
   add_executable(test_timing_engine tests/test_timing_engine.cpp)
   target_link_libraries(test_timing_engine PRIVATE hbmsim_core)
   add_test(NAME timing_engine COMMAND test_timing_engine)
+
+  add_executable(test_scheduler tests/test_scheduler.cpp)
+  target_link_libraries(test_scheduler PRIVATE hbmsim_core)
+  add_test(NAME scheduler COMMAND test_scheduler)
 endif()

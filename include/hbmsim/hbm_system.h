@@ -1,6 +1,7 @@
 #pragma once
 
 #include "hbmsim/controller/command_planner.h"
+#include "hbmsim/controller/scheduler.h"
 #include "hbmsim/kernel/event_queue.h"
 #include "hbmsim/mapping/address_mapper.h"
 #include "hbmsim/media/bank_state.h"
@@ -25,6 +26,7 @@ struct HbmConfig {
   HbmTimingSpec timing{};
   HbmStandard standard = HbmStandard::Hbm3;
   RowPolicy row_policy = RowPolicy::Open;
+  SchedulerKind scheduler = SchedulerKind::FrFcfs;
   RefreshPolicy refresh_policy = RefreshPolicy::AllBank;
   std::uint64_t channel_bandwidth_bytes_per_ns = 32;
   std::uint64_t address_interleave_bytes = 64;
@@ -147,6 +149,8 @@ class HbmSystem {
       const HbmTransaction& transaction) const;
   [[nodiscard]] std::optional<Candidate> choose_next(std::uint32_t channel,
                                                        SimTime now) const;
+  [[nodiscard]] std::optional<Candidate> choose_with_policy(
+      std::uint32_t channel, SimTime now) const;
   [[nodiscard]] std::optional<MaintenanceCandidate> choose_maintenance(
       std::uint32_t channel, SimTime now) const;
   void admit(const HbmTransaction& transaction);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "hbmsim/dram/address.h"
 #include "hbmsim/topology.h"
 
 #include <cstdint>
@@ -20,6 +21,18 @@ struct HbmAddress {
   std::uint32_t flat_pseudo_channel = 0;
   std::uint32_t flat_bank_group = 0;
   std::uint32_t flat_bank = 0;
+
+  // Compatibility view for the original HBM-specific fast path.  New
+  // controllers consume this standard-neutral hierarchy instead.
+  [[nodiscard]] Address hierarchical() const {
+    return {{AddressLevel::Stack, stack},
+            {AddressLevel::Channel, channel},
+            {AddressLevel::PseudoChannel, pseudo_channel},
+            {AddressLevel::BankGroup, bank_group},
+            {AddressLevel::Bank, bank},
+            {AddressLevel::Row, row},
+            {AddressLevel::Column, column}};
+  }
 };
 
 // H0/H1 use a stable, channel-interleaved mapping.  Its explicit hierarchy
