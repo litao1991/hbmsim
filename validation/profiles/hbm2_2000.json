@@ -68,5 +68,5 @@
       "known_difference": "The V0.3 input preparer derives profile-specific memspec and dense mapping JSON from the pinned stock schema. Its STL input elides the fixed-zero SID/stack bit, preserving every dynamic address field; DRAMSys retains its own command/timing implementation."
     }
   },
-  "comparison_status": "V0.3 alignment in progress: every request is one 32 B HBM2 payload with an absolute 1 ns arrival tick and SID/stack selector zero; DRAMSys receives profile-derived HBM2 organization, timing, and dense address-mapping JSON."
+  "comparison_status": "V0.3 baseline completed in GitHub Actions run 34081337722: every request is one 32 B HBM2 payload with an absolute 1 ns arrival tick and SID/stack selector zero; DRAMSys receives profile-derived HBM2 organization, timing, and dense address-mapping JSON. Command and row-locality differences remain reported measurements."
 }
