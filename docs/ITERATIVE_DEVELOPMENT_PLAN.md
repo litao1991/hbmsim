@@ -32,6 +32,16 @@ It can later satisfy a shared HBFSim `IMemoryTarget` contract, but no common HBM
 
 ## Incremental delivery plan
 
+## v0.4–v0.6 execution sequence
+
+| Version | Core objective | Required exit gate |
+| --- | --- | --- |
+| v0.4 | Controller / Scheduler / Row / Refresh / Mapper architecture convergence | Extract the HBM controller-owned state behind policy interfaces. The default FR-FCFS must use the same `IScheduler` candidate path as FIFO and FRFCFSRowHit. Golden HBM traces retain bit-for-bit completion times/order, command counts, row classes, refresh/RFM counts and data-bus occupancy. |
+| v0.5 | HBM2/HBM3 standards and complete timing | Replace the loose standard enum/configuration with canonical HBM organization, command and cycle timing profiles. Add HBM-specific `RCDRD/RCDWR`, `CCDS/CCDL`, `RRDS/RRDL`, `WTRS/WTRL`, `RTP` and `WR` constraints, then validate profile adapters against pinned references. |
+| v0.6 | Resource/queue/stats and H6 re-validation | Finish controller resource ownership, queue/statistics reporting and the extended normalized trace suite. Re-run HBMSim, Ramulator 2.1 and DRAMSys on the latest head, including pseudo-channel parallelism and refresh collisions, before freezing a new baseline. |
+
+The versions are intentionally sequential: v0.4 is behavior-preserving only; v0.5 changes standard semantics only after v0.4's golden gate; v0.6 is the reference-validation gate. HBF, compute and AI workload work remain downstream of all three.
+
 | Increment | Primary outcome | Scope | Exit criteria |
 | --- | --- | --- | --- |
 | H0 — foundation | HBFSim-compatible transaction boundary | `SimTime`, request/completion types, configuration loading, topology shell, deterministic event adapter, fixed latency plus channel bandwidth reservation | Unit tests prove monotonic completion times, deterministic same-time ordering, and channel-bandwidth contention; a standalone trace smoke test produces CSV metrics. |
