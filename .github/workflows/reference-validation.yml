@@ -52,6 +52,7 @@ jobs:
           cat validation/results/three-simulator-comparison.csv >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload validation results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: hbm-validation-results

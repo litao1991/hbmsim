@@ -12,7 +12,7 @@ The validation target is a common HBM2 micro-trace set run through HBMSim, Ramul
 ./build/hbmsim validation/traces/row_hit.csv --profile hbm2_2000
 ```
 
-The manifest fixes the SID/stack selector to zero, matching the single-SID Ramulator HBM2_2Gb baseline without introducing a superfluous HBMSim hierarchy. The validation input preparer derives a DRAMSys HBM2 memspec from that same organization and timing contract instead of using its stock 16Gb/8Hi dimensions. The Actions comparison carries the selected profile through `validation/reference-inputs/metadata.json`.
+The manifest fixes the SID/stack selector to zero, matching the single-SID Ramulator HBM2_2Gb baseline without introducing a superfluous HBMSim hierarchy. The validation input preparer derives DRAMSys HBM2 memspec and dense address-mapping JSON from that same organization and timing contract instead of using its stock 16Gb/8Hi dimensions. Its STL conversion removes only that constant SID bit, so all dynamic burst, pseudo-channel, bank-group, bank, column, and row fields remain identical. The Actions comparison carries the selected profile through `validation/reference-inputs/metadata.json`.
 
 ## V0.3 alignment work
 

@@ -44,7 +44,7 @@
     "sid_or_stack_bit": [10],
     "sid_or_stack_value": 0,
     "column_bits": [11, 12, 13, 14, 15],
-    "row_bits": [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+    "row_bits": [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]
   },
   "tool_bindings": {
     "hbmsim": {
@@ -62,11 +62,11 @@
     },
     "dramsys": {
       "memspec": "generated validation/reference-inputs/dramsys/hbm2_2000-memspec.json",
-      "address_mapping": "configs/addressmapping/am_hbm2_16Gb-8H_pc_brc.json",
+      "address_mapping": "generated validation/reference-inputs/dramsys/hbm2_2000-addressmapping.json",
       "refresh": "stock controller configuration",
       "controller": "stock fr_fcfs.json",
-      "known_difference": "The V0.3 input preparer derives a profile-specific HBM2 memspec from the pinned stock schema; DRAMSys retains its own command/timing implementation."
+      "known_difference": "The V0.3 input preparer derives profile-specific memspec and dense mapping JSON from the pinned stock schema. Its STL input elides the fixed-zero SID/stack bit, preserving every dynamic address field; DRAMSys retains its own command/timing implementation."
     }
   },
-  "comparison_status": "V0.3 alignment in progress: every request is one 32 B HBM2 payload with an absolute 1 ns arrival tick and SID/stack selector zero; DRAMSys receives a profile-derived HBM2 organization/timing JSON."
+  "comparison_status": "V0.3 alignment in progress: every request is one 32 B HBM2 payload with an absolute 1 ns arrival tick and SID/stack selector zero; DRAMSys receives profile-derived HBM2 organization, timing, and dense address-mapping JSON."
 }

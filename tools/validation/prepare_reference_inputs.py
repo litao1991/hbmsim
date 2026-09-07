@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 
 
@@ -24,8 +25,52 @@ def hbm2_vector(address: int) -> str:
     bank = (address >> 8) & 0x3
     sid = (address >> 10) & 0x1
     column = (address >> 11) & 0x1F
-    row = (address >> 16) & 0x7FFF
+    row = (address >> 16) & 0x3FFF
     return f"0,{pseudo_channel},{sid},{bank_group},{bank},{row},{column}"
+
+
+def dramsys_address(address: int) -> int:
+    """Remove HBM2's fixed-zero SID bit before feeding DRAMSys.
+
+    The common profile reserves bit 10 for SID/stack selection and constrains
+    it to zero.  DRAMSys's address decoder requires a dense, gap-free mapping,
+    so its private trace representation elides that constant bit.  All dynamic
+    burst, pseudo-channel, bank-group, bank, column, and row fields retain
+    their values.
+    """
+    if address & (1 << 10):
+        raise ValueError("V0.3 DRAMSys input requires the profile's fixed SID bit to be zero")
+    return (address & ((1 << 10) - 1)) | ((address >> 11) << 10)
+
+
+def write_dramsys_mapping(profile: dict, output: Path) -> None:
+    """Generate a dense DRAMSys mapping from the common fixed-SID profile."""
+    mapping = profile["address_mapping"]
+    organization = profile["hbm2_organization"]
+    if mapping["sid_or_stack_value"] != 0 or mapping["sid_or_stack_bit"] != [10]:
+        raise ValueError("DRAMSys V0.3 mapping expects a fixed-zero SID bit at bit 10")
+    expected_widths = {
+        "bank group": int(math.log2(organization["bank_groups_per_pseudo_channel"])),
+        "bank": int(math.log2(organization["banks_per_bank_group"])),
+        "column": int(math.log2(organization["columns_per_row"])),
+        "row": int(math.log2(organization["rows_per_bank"])),
+    }
+    actual_widths = {
+        "bank group": len(mapping["bank_group_bits"]),
+        "bank": len(mapping["bank_bits"]),
+        "column": len(mapping["column_bits"]),
+        "row": len(mapping["row_bits"]),
+    }
+    if actual_widths != expected_widths:
+        raise ValueError(f"profile organization and address mapping disagree: {actual_widths} != {expected_widths}")
+    output.write_text(json.dumps({"addressmapping": {
+        "BURST_BIT": mapping["burst_bits"],
+        "PSEUDOCHANNEL_BIT": mapping["pseudo_channel_bit"],
+        "BANKGROUP_BIT": mapping["bank_group_bits"],
+        "BANK_BIT": mapping["bank_bits"],
+        "COLUMN_BIT": [bit - 1 for bit in mapping["column_bits"]],
+        "ROW_BIT": [bit - 1 for bit in mapping["row_bits"]],
+    }}, indent=2) + "\n", encoding="utf-8")
 
 
 def write_dramsys_memspec(profile: dict, dramsys_root: Path, output: Path) -> None:
@@ -76,7 +121,9 @@ def main() -> None:
     ramulator_dir.mkdir(parents=True, exist_ok=True)
     dramsys_dir.mkdir(parents=True, exist_ok=True)
     dramsys_memspec = dramsys_dir / "hbm2_2000-memspec.json"
+    dramsys_mapping = dramsys_dir / "hbm2_2000-addressmapping.json"
     write_dramsys_memspec(profile, args.dramsys_root, dramsys_memspec)
+    write_dramsys_mapping(profile, dramsys_mapping)
 
     request_contract = profile["request_contract"]
     request_size = request_contract["request_size_bytes"]
@@ -98,10 +145,10 @@ def main() -> None:
             for item in rows:
                 cycle = int(item["arrival_ps"]) // 1_000
                 op = "read" if item["op"] == "READ" else "write"
-                stream.write(f"{cycle}: ({item['size']}) {op} {item['address']}\n")
+                stream.write(f"{cycle}: ({item['size']}) {op} {dramsys_address(int(item['address'], 0))}\n")
         config = {
             "simulation": {
-                "addressmapping": str((args.dramsys_root / "configs/addressmapping/am_hbm2_16Gb-8H_pc_brc.json").resolve()),
+                "addressmapping": str(dramsys_mapping.resolve()),
                 "mcconfig": str((args.dramsys_root / "configs/mcconfig/fr_fcfs.json").resolve()),
                 "memspec": str(dramsys_memspec.resolve()),
                 "simconfig": str((args.dramsys_root / "configs/simconfig/example.json").resolve()),
@@ -118,7 +165,7 @@ def main() -> None:
         "profile_manifest": str(args.profile),
         "neutral_trace_format": profile["request_contract"]["trace_format"],
         "ramulator2": {"standard": "HBM2_2Gb / HBM2_2000Mbps", "input": "ReadWriteTrace hierarchical address vector", "arrival_model": "one accepted request per 1 ns frontend tick"},
-        "dramsys": {"standard": "profile-derived HBM2.json", "input": "absolute STL trace at 1000 MHz", "arrival_model": "arrival_ps quantized to 1 ns"},
+        "dramsys": {"standard": "profile-derived HBM2.json", "input": "absolute STL trace at 1000 MHz with fixed-zero SID bit elided", "arrival_model": "arrival_ps quantized to 1 ns"},
         "comparison_status": profile["comparison_status"],
     }
     Path("validation/reference-inputs/metadata.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
