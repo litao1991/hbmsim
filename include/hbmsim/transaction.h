@@ -8,6 +8,21 @@
 
 namespace hbmsim {
 
+enum class TrafficClass {
+  Demand,
+  Prefetch,
+  Fill,
+  Writeback,
+  Background,
+};
+
+struct RequestMetadata {
+  TrafficClass traffic_class = TrafficClass::Demand;
+  std::uint8_t priority = 0;
+  std::uint64_t opaque_tag = 0;
+  std::uint32_t ordering_domain = 0;
+};
+
 struct HbmTransaction {
   TransactionId id = 0;
   HbmOp op = HbmOp::Read;
@@ -15,13 +30,20 @@ struct HbmTransaction {
   std::uint64_t size_bytes = 0;
   SimTime arrival_time = 0;
   ClientId client = 0;
+  RequestMetadata metadata{};
 };
 
 struct RequestToken {
   TransactionId id = 0;
 };
 
-enum class SubmitStatus { Accepted, Backpressure, InvalidArgument, DuplicateId, ArrivalInPast };
+enum class SubmitStatus {
+  Accepted,
+  Backpressure,
+  InvalidArgument,
+  DuplicateId,
+  ArrivalInFuture
+};
 
 enum class HbmAccessClass { RowHit, RowClosed, RowConflict };
 
@@ -45,6 +67,7 @@ struct HbmCompletion {
   SimTime completion_time = 0;
   SimTime latency = 0;
   HbmLatencyBreakdown latency_breakdown{};
+  RequestMetadata metadata{};
 };
 
 }  // namespace hbmsim

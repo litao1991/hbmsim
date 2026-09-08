@@ -23,4 +23,13 @@ int main() {
   // bypass it, which makes its policy difference explicit and deterministic.
   assert(hbmsim::scheduler_for(hbmsim::SchedulerKind::Fifo)
              .choose(candidates, 10)->queue_index == 0);
+
+  const std::vector<hbmsim::SchedulerCandidate> priorities{
+      {0, false, hbmsim::DramCommand::Read, 0, 1, true, true, 1},
+      {1, false, hbmsim::DramCommand::Read, 0, 2, true, true, 9},
+  };
+  assert(hbmsim::scheduler_for(hbmsim::SchedulerKind::FrFcfs)
+             .choose(priorities, 0)->queue_index == 1);
+  assert(hbmsim::scheduler_for(hbmsim::SchedulerKind::FrFcfsRowHit)
+             .choose(priorities, 0)->queue_index == 1);
 }

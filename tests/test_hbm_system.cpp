@@ -1,30 +1,79 @@
 #include "hbmsim/hbm_system.h"
+#include "hbmsim/kernel/event_queue.h"
 
 #include <cassert>
+#include <stdexcept>
+#include <utility>
 #include <vector>
 
 namespace {
 
+class TestSystem {
+ public:
+  explicit TestSystem(hbmsim::HbmConfig config)
+      : core_(retain(std::move(config)), events_) {}
+
+  hbmsim::SubmitResult submit(const hbmsim::HbmTransaction& transaction) {
+    if (transaction.arrival_time <= events_.now()) {
+      return core_.try_submit_now(transaction);
+    }
+    events_.schedule_at(transaction.arrival_time, [this, transaction] {
+      const auto result = core_.try_submit_now(transaction);
+      if (!result.accepted()) throw std::runtime_error(result.message);
+    });
+    return {hbmsim::SubmitStatus::Accepted,
+            hbmsim::RequestToken{transaction.id}, {}};
+  }
+
+  hbmsim::SubmitResult try_submit_now(
+      const hbmsim::HbmTransaction& transaction) {
+    return core_.try_submit_now(transaction);
+  }
+  void run() { events_.run(); }
+  void run_until(hbmsim::SimTime until) { events_.run_until(until); }
+  hbmsim::SimTime now() const { return events_.now(); }
+  void set_completion_callback(hbmsim::CompletionCallback callback) {
+    core_.set_completion_callback(std::move(callback));
+  }
+  const auto& completions() const { return core_.completions(); }
+  const auto& stats() const { return core_.stats(); }
+  auto map_address(std::uint64_t address) const {
+    return core_.map_address(address);
+  }
+  std::size_t active_request_count() const {
+    return core_.active_request_count();
+  }
+
+ private:
+  static hbmsim::HbmConfig retain(hbmsim::HbmConfig config) {
+    config.simulation.retain_completions = true;
+    return config;
+  }
+
+  hbmsim::EventQueue events_;
+  hbmsim::HbmSystem core_;
+};
+
 hbmsim::HbmConfig base_config() {
   hbmsim::HbmConfig config;
-  config.topology.pseudo_channels_per_channel = 1;
-  config.topology.bank_groups_per_pseudo_channel = 1;
-  config.topology.banks_per_bank_group = 1;
-  config.address_interleave_bytes = 64;
-  config.columns_per_row = 2;
-  config.rows_per_bank = 8;
-  config.pseudo_channel_rate = {1'000, 1'000};
-  config.timing.t_rcd = 10;
-  config.timing.t_rp = 5;
-  config.timing.t_cl = 20;
-  config.timing.t_ras = 0;
-  config.timing.t_rc = 0;
-  config.timing.t_ccd = 0;
-  config.timing.t_rrd = 0;
-  config.timing.t_faw = 0;
-  config.timing.t_wtr = 0;
-  config.timing.t_rtw = 0;
-  config.timing.t_rfc = 100;
+  config.device.organization.topology.pseudo_channels_per_channel = 1;
+  config.device.organization.topology.bank_groups_per_pseudo_channel = 1;
+  config.device.organization.topology.banks_per_bank_group = 1;
+  config.device.organization.address_interleave_bytes = 64;
+  config.device.organization.columns_per_row = 2;
+  config.device.organization.rows_per_bank = 8;
+  config.device.organization.pseudo_channel_rate = {1'000, 1'000};
+  config.device.timing.t_rcd = 10;
+  config.device.timing.t_rp = 5;
+  config.device.timing.t_cl = 20;
+  config.device.timing.t_ras = 0;
+  config.device.timing.t_rc = 0;
+  config.device.timing.t_ccd = 0;
+  config.device.timing.t_rrd = 0;
+  config.device.timing.t_faw = 0;
+  config.device.timing.t_wtr = 0;
+  config.device.timing.t_rtw = 0;
+  config.device.timing.t_rfc = 100;
   return config;
 }
 
@@ -34,16 +83,16 @@ int main() {
   // V0.2: the HBM2_2000 profile is the explicit validation baseline.
   {
     const auto config = hbmsim::HbmConfig::hbm2_2000();
-    assert(config.standard->name() == "HBM2");
-    assert(config.topology.pseudo_channels_per_channel == 2);
-    assert(config.topology.bank_groups_per_pseudo_channel == 4);
-    assert(config.topology.banks_per_bank_group == 4);
-    assert(config.address_interleave_bytes == 32);
-    assert(config.physical_burst_bytes == 32);
-    assert(config.timing.t_rcd == 14'000);
-    assert(config.timing.t_rc == 48'000);
-    assert(config.timing.t_rfc == 260'000);
-    hbmsim::HbmSystem system(config);
+    assert(config.device.standard->name() == "HBM2");
+    assert(config.device.organization.topology.pseudo_channels_per_channel == 2);
+    assert(config.device.organization.topology.bank_groups_per_pseudo_channel == 4);
+    assert(config.device.organization.topology.banks_per_bank_group == 4);
+    assert(config.device.organization.address_interleave_bytes == 32);
+    assert(config.device.organization.physical_burst_bytes == 32);
+    assert(config.device.timing.t_rcd == 14'000);
+    assert(config.device.timing.t_rc == 48'000);
+    assert(config.device.timing.t_rfc == 260'000);
+    TestSystem system(config);
     const auto mapped = system.map_address((1ULL << 5) | (2ULL << 6) |
                                            (3ULL << 8) | (1ULL << 10) |
                                            (4ULL << 11) | (5ULL << 16));
@@ -60,23 +109,23 @@ int main() {
     auto config = hbmsim::HbmConfig::hbm2_2000();
     // This isolates pseudo-channel data resources from standard command-bus
     // occupancy; the standard profile itself is covered separately above.
-    config.standard.reset();
-    config.timing.t_rcd = 0;
-    config.timing.t_command = 0;
-    config.timing.t_rcd_rd = 0;
-    config.timing.t_rcd_wr = 0;
-    config.timing.t_cl = 0;
-    config.timing.t_ccd = 0;
-    config.timing.t_ccd_s = 0;
-    config.timing.t_ccd_l = 0;
-    config.timing.t_rrd = 0;
-    config.timing.t_rrd_s = 0;
-    config.timing.t_rrd_l = 0;
-    config.timing.t_faw = 0;
-    config.timing.t_wtr_s = 0;
-    config.timing.t_wtr_l = 0;
-    config.pseudo_channel_rate = {16, 1'000};
-    hbmsim::HbmSystem system(config);
+    config.device.standard.reset();
+    config.device.timing.t_rcd = 0;
+    config.device.timing.t_command = 0;
+    config.device.timing.t_rcd_rd = 0;
+    config.device.timing.t_rcd_wr = 0;
+    config.device.timing.t_cl = 0;
+    config.device.timing.t_ccd = 0;
+    config.device.timing.t_ccd_s = 0;
+    config.device.timing.t_ccd_l = 0;
+    config.device.timing.t_rrd = 0;
+    config.device.timing.t_rrd_s = 0;
+    config.device.timing.t_rrd_l = 0;
+    config.device.timing.t_faw = 0;
+    config.device.timing.t_wtr_s = 0;
+    config.device.timing.t_wtr_l = 0;
+    config.device.organization.pseudo_channel_rate = {16, 1'000};
+    TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 32, 0, 0}).accepted());
     assert(system.submit({2, hbmsim::HbmOp::Read, 32, 32, 0, 0}).accepted());
     system.run();
@@ -89,17 +138,17 @@ int main() {
   // V0.5: HBM3 is a resolved standard profile, not an enum-only label.
   {
     const auto config = hbmsim::HbmConfig::hbm3_6400();
-    assert(config.standard->name() == "HBM3");
-    assert(config.timing.use_extended_hbm_timing);
-    assert(config.timing.t_rcd_rd == 19'375);
-    assert(config.timing.t_rcd_wr == 9'375);
-    assert(config.timing.t_ccd_l == 2'500);
-    assert(config.timing.t_rfcpb == 200'000);
+    assert(config.device.standard->name() == "HBM3");
+    assert(config.device.timing.use_extended_hbm_timing);
+    assert(config.device.timing.t_rcd_rd == 19'375);
+    assert(config.device.timing.t_rcd_wr == 9'375);
+    assert(config.device.timing.t_ccd_l == 2'500);
+    assert(config.device.timing.t_rfcpb == 200'000);
   }
 
   // H2: a closed-row request plans ACT then waits tRCD before RD.
   {
-    hbmsim::HbmSystem system(base_config());
+    TestSystem system(base_config());
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
     system.run();
     assert(system.completions().size() == 1);
@@ -110,7 +159,7 @@ int main() {
 
   // H2: hit, closed, and conflict are generated by actual command sequences.
   {
-    hbmsim::HbmSystem system(base_config());
+    TestSystem system(base_config());
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
     assert(system.submit({2, hbmsim::HbmOp::Read, 64, 64, 100, 0}).accepted());
     assert(system.submit({3, hbmsim::HbmOp::Read, 128, 64, 200, 0}).accepted());
@@ -130,7 +179,7 @@ int main() {
 
   // H3: FR-FCFS keeps a row hit ahead of an older row-conflict request.
   {
-    hbmsim::HbmSystem system(base_config());
+    TestSystem system(base_config());
     std::vector<hbmsim::TransactionId> completion_order;
     system.set_completion_callback(
         [&](const hbmsim::HbmCompletion& completion) { completion_order.push_back(completion.id); });
@@ -145,9 +194,9 @@ int main() {
   // H3: a write queue at its high watermark is drained before reads.
   {
     auto config = base_config();
-    config.write_drain_high_watermark = 1;
-    config.write_drain_low_watermark = 0;
-    hbmsim::HbmSystem system(config);
+    config.controller.write_drain_high_watermark = 1;
+    config.controller.write_drain_low_watermark = 0;
+    TestSystem system(config);
     std::vector<hbmsim::TransactionId> completion_order;
     system.set_completion_callback(
         [&](const hbmsim::HbmCompletion& completion) { completion_order.push_back(completion.id); });
@@ -160,9 +209,9 @@ int main() {
   // H4: all-bank refresh blocks the controller for tRFC before queued work.
   {
     auto config = base_config();
-    config.refresh_interval = 100;
-    config.timing.t_rcd = 1000;
-    hbmsim::HbmSystem system(config);
+    config.controller.refresh_interval = 100;
+    config.device.timing.t_rcd = 1000;
+    TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
     assert(system.submit({2, hbmsim::HbmOp::Read, 64, 64, 2, 0}).accepted());
     system.run_until(150);
@@ -173,12 +222,12 @@ int main() {
   // H5: 16 KiB is represented by four 4 KiB accesses, never 256 64 B bursts.
   {
     auto config = base_config();
-    config.address_interleave_bytes = 4096;
-    config.simulation_access_granularity_bytes = 4096;
-    config.timing.t_rcd = 0;
-    config.timing.t_cl = 0;
-    config.pseudo_channel_rate = {100'000, 1'000};
-    hbmsim::HbmSystem system(config);
+    config.device.organization.address_interleave_bytes = 4096;
+    config.simulation.simulation_access_granularity_bytes = 4096;
+    config.device.timing.t_rcd = 0;
+    config.device.timing.t_cl = 0;
+    config.device.organization.pseudo_channel_rate = {100'000, 1'000};
+    TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 16 * 1024, 0, 0}).accepted());
     system.run();
     assert(system.stats().modeled_accesses == 4);
@@ -194,13 +243,13 @@ int main() {
   // alternate between two channels and therefore remain four modelled accesses.
   {
     auto config = base_config();
-    config.topology.channels_per_stack = 2;
-    config.columns_per_row = 16;
-    config.simulation_access_granularity_bytes = 4096;
-    config.timing.t_rcd = 0;
-    config.timing.t_cl = 0;
-    config.pseudo_channel_rate = {100'000, 1'000};
-    hbmsim::HbmSystem system(config);
+    config.device.organization.topology.channels_per_stack = 2;
+    config.device.organization.columns_per_row = 16;
+    config.simulation.simulation_access_granularity_bytes = 4096;
+    config.device.timing.t_rcd = 0;
+    config.device.timing.t_cl = 0;
+    config.device.organization.pseudo_channel_rate = {100'000, 1'000};
+    TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 256, 0, 0}).accepted());
     system.run();
     assert(system.stats().modeled_accesses == 4);
@@ -212,12 +261,12 @@ int main() {
   // the group even when the configured aggregation limit is larger.
   {
     auto config = base_config();
-    config.columns_per_row = 2;
-    config.simulation_access_granularity_bytes = 4096;
-    config.timing.t_rcd = 0;
-    config.timing.t_cl = 0;
-    config.pseudo_channel_rate = {100'000, 1'000};
-    hbmsim::HbmSystem system(config);
+    config.device.organization.columns_per_row = 2;
+    config.simulation.simulation_access_granularity_bytes = 4096;
+    config.device.timing.t_rcd = 0;
+    config.device.timing.t_cl = 0;
+    config.device.organization.pseudo_channel_rate = {100'000, 1'000};
+    TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 256, 0, 0}).accepted());
     system.run();
     assert(system.stats().modeled_accesses == 2);
@@ -227,12 +276,12 @@ int main() {
   // H6: per-bank refresh rotates banks without using the all-bank blocker.
   {
     auto config = base_config();
-    config.topology.banks_per_bank_group = 2;
-    config.refresh_policy = hbmsim::RefreshPolicy::PerBank;
-    config.refresh_interval = 10;
-    config.timing.t_rcd = 100;
-    config.timing.t_rfcpb = 10;
-    hbmsim::HbmSystem system(config);
+    config.device.organization.topology.banks_per_bank_group = 2;
+    config.controller.refresh_policy = hbmsim::RefreshPolicy::PerBank;
+    config.controller.refresh_interval = 10;
+    config.device.timing.t_rcd = 100;
+    config.device.timing.t_rfcpb = 10;
+    TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
     system.run_until(25);
     assert(system.stats().channels[0].refreshes == 0);
@@ -243,12 +292,12 @@ int main() {
   // the next transaction, rather than creating a false row hit after idle.
   {
     auto config = base_config();
-    config.refresh_interval = 100;
-    config.timing.t_rcd = 0;
-    config.timing.t_cl = 0;
-    config.timing.t_rfc = 10;
-    config.pseudo_channel_rate = {1'000, 1'000};
-    hbmsim::HbmSystem system(config);
+    config.controller.refresh_interval = 100;
+    config.device.timing.t_rcd = 0;
+    config.device.timing.t_cl = 0;
+    config.device.timing.t_rfc = 10;
+    config.device.organization.pseudo_channel_rate = {1'000, 1'000};
+    TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
     assert(system.submit({2, hbmsim::HbmOp::Read, 0, 64, 500, 0}).accepted());
     system.run_until(575);
@@ -263,9 +312,9 @@ int main() {
   // produces three events.
   {
     auto config = hbmsim::HbmConfig::hbm4_8000();
-    config.enable_rfm = true;
-    config.rfm_activation_threshold = 2;
-    hbmsim::HbmSystem system(config);
+    config.controller.enable_rfm = true;
+    config.controller.rfm_activation_threshold = 2;
+    TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 32, 0, 0}).accepted());
     assert(system.submit({2, hbmsim::HbmOp::Read, 8'192, 32, 1'000'000, 0}).accepted());
     assert(system.submit({3, hbmsim::HbmOp::Read, 0, 32, 2'000'000, 0}).accepted());
@@ -287,8 +336,8 @@ int main() {
   // receive explicit backpressure instead of growing an unbounded queue.
   {
     auto config = base_config();
-    config.read_queue_capacity = 1;
-    hbmsim::HbmSystem system(config);
+    config.controller.read_queue_capacity = 1;
+    TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
     const auto rejected = system.submit({2, hbmsim::HbmOp::Read, 64, 64, 0, 0});
     assert(rejected.status == hbmsim::SubmitStatus::Backpressure);
@@ -304,8 +353,8 @@ int main() {
   // the next same-row request therefore starts closed without a separate PRE.
   {
     auto config = hbmsim::HbmConfig::hbm2_2000();
-    config.row_policy = hbmsim::RowPolicy::Closed;
-    hbmsim::HbmSystem system(config);
+    config.controller.row_policy = hbmsim::RowPolicy::Closed;
+    TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 32, 0, 0}).accepted());
     assert(system.submit({2, hbmsim::HbmOp::Read, 0, 32, 100'000, 0}).accepted());
     system.run();
@@ -322,8 +371,8 @@ int main() {
   // configuration validation and controller issue checks.
   {
     auto config = hbmsim::HbmConfig::hbm3_6400();
-    config.enable_rfm = true;
-    config.rfm_activation_threshold = 4;
+    config.controller.enable_rfm = true;
+    config.controller.rfm_activation_threshold = 4;
     config.validate();
   }
 
@@ -331,8 +380,8 @@ int main() {
   // breakdown sums to the externally visible latency.
   {
     auto config = hbmsim::HbmConfig::hbm2_2000();
-    config.enable_request_merging = false;
-    hbmsim::HbmSystem system(config);
+    config.controller.request_merge_policy = hbmsim::RequestMergePolicy::None;
+    TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Write, 0, 32, 0, 0}).accepted());
     system.run();
     const auto& completion = system.completions().front();
@@ -345,8 +394,8 @@ int main() {
   // timestamp. The second ACT overlaps the first RD at 14 ns.
   {
     auto config = hbmsim::HbmConfig::hbm2_2000();
-    config.enable_request_merging = false;
-    hbmsim::HbmSystem system(config);
+    config.controller.request_merge_policy = hbmsim::RequestMergePolicy::None;
+    TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 32, 0, 0}).accepted());
     assert(system.submit({2, hbmsim::HbmOp::Read, 1ULL << 8, 32,
                           14'000, 0}).accepted());
@@ -361,8 +410,8 @@ int main() {
   // while consuming one data command and one physical transfer.
   {
     auto config = base_config();
-    config.enable_request_merging = true;
-    hbmsim::HbmSystem system(config);
+    config.controller.request_merge_policy = hbmsim::RequestMergePolicy::SameAddressRead;
+    TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
     assert(system.submit({2, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
     system.run();
@@ -370,5 +419,57 @@ int main() {
     assert(system.stats().read_commands == 1);
     assert(system.stats().channels[0].queue.merged_accesses == 1);
     assert(system.stats().channels[0].data_bus_busy_time == 64);
+  }
+
+  // V0.7.1: the reusable core only admits arrived work, streams completions by
+  // default, and releases transaction IDs after completion.
+  {
+    auto config = base_config();
+    hbmsim::EventQueue events;
+    hbmsim::HbmSystem core(config, events);
+    hbmsim::HbmTransaction transaction{
+        9, hbmsim::HbmOp::Read, 0, 64, 10, 0,
+        {hbmsim::TrafficClass::Fill, 7, 0xabc, 3}};
+    assert(core.try_submit_now(transaction).status ==
+           hbmsim::SubmitStatus::ArrivalInFuture);
+    transaction.arrival_time = 0;
+    std::vector<hbmsim::HbmCompletion> streamed;
+    core.set_completion_callback(
+        [&](const auto& completion) { streamed.push_back(completion); });
+    assert(core.try_submit_now(transaction).accepted());
+    events.run();
+    assert(core.completions().empty());
+    assert(core.active_request_count() == 0);
+    assert(streamed.size() == 1);
+    assert(streamed.front().metadata.traffic_class ==
+           hbmsim::TrafficClass::Fill);
+    assert(streamed.front().metadata.priority == 7);
+    assert(streamed.front().metadata.opaque_tag == 0xabc);
+    transaction.arrival_time = events.now();
+    assert(core.try_submit_now(transaction).accepted());
+    events.run();
+    assert(streamed.size() == 2);
+  }
+
+  // V0.7.1: finite queues advertise a capacity transition instead of forcing
+  // an integration driver to poll blindly.
+  {
+    auto config = base_config();
+    config.controller.read_queue_capacity = 1;
+    hbmsim::EventQueue events;
+    hbmsim::HbmSystem core(config, events);
+    std::size_t notifications = 0;
+    core.set_capacity_callback([&](auto) { ++notifications; });
+    assert(core.try_submit_now(
+                    {1, hbmsim::HbmOp::Read, 0, 64, 0, 0})
+               .accepted());
+    assert(core.try_submit_now(
+                    {2, hbmsim::HbmOp::Read, 64, 64, 0, 0})
+               .status == hbmsim::SubmitStatus::Backpressure);
+    while (notifications == 0) assert(events.run_next());
+    assert(core.try_submit_now(
+                    {2, hbmsim::HbmOp::Read, 64, 64, events.now(), 0})
+               .accepted());
+    events.run();
   }
 }

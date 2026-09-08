@@ -1,6 +1,6 @@
 # HBMSim
 
-HBMSim is an event-driven, transaction-level HBM memory-system simulator with command-aware DRAM timing. It is designed as an independent peer of HBFSim and will later integrate through a small transaction interface while keeping HBM and HBF as separate memory-management domains.
+HBMSim is an event-driven, transaction-level HBM memory-system simulator with command-aware DRAM timing. It integrates with HBFSim through a small transaction and scheduler boundary while keeping HBM and HBF as separate memory-management domains.
 
 ## Design position
 
@@ -25,7 +25,7 @@ third_party/reference/        pinned, read-only upstream study sources
 
 ## Status
 
-H0–H6 and v0.6.4 are implemented. Each physical channel owns an independent `HbmController` with finite read/write queues, bank and refresh state, separate row/column command buses, data resources, and diagnostics. `HbmSystem` retains only transaction splitting, global events, admission/backpressure, and parent completion. All scheduler choices use `IScheduler`; row, refresh, and mapping decisions use their policy interfaces.
+H0–H6 and v0.7.3 are implemented. Each physical channel owns an independent `HbmController` with finite read/write queues, bank and refresh state, separate row/column command buses, data resources, and diagnostics. `HbmSystem` owns transaction splitting, admission and parent completion but not global time: callers inject `ISimScheduler`. All scheduler choices use `IScheduler`; row, refresh, mapping, and request-coalescing decisions use policy interfaces.
 
 ```sh
 cmake -S . -B build
@@ -33,5 +33,18 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ./build/hbmsim traces/h0_smoke.csv
 ```
+
+The standalone CLI submits requests only when their trace arrival is reached,
+retries bounded-queue backpressure by advancing to real events, and streams
+completion CSV rows. Library users receive capacity notifications with the
+available read/write slots. Completion history is off by default and can be
+enabled explicitly through `SimulationConfig::retain_completions` for tests.
+
+Configuration is split into `DeviceSpec` (organization, timing, commands,
+mapping and bandwidth), `ControllerConfig` (scheduler, queues, row/refresh and
+coalescing policies), and `SimulationConfig` (model granularity and reporting).
+Requests and completions carry traffic class, priority, opaque tag and ordering
+domain. Same-address read coalescing retains separate logical completions while
+one physical access consumes the command and data resources.
 
 The canonical `Hbm2Standard` and `Hbm3Standard` objects provide organization, cycle-derived timing, commands, table-driven prerequisites/transitions, command-bus placement, and mapping. Command coverage includes bank/all-bank precharge, auto-precharge, all/per-bank refresh, and HBM3/HBM4 RFM. Reads use `tCL`, writes use `tCWL`; optional same-address merging preserves every logical completion while consuming one physical data command. Each completion reports mutually exclusive queue, command, data-ready, data-bus-wait, and transfer stages. GitHub Actions permanently gates HBM2 numerical drift and request completion across HBMSim/Ramulator/DRAMSys, plus HBM3 completion across HBMSim/Ramulator; the pinned DRAMSys version is explicitly marked unsupported for HBM3. See [docs/H6_REFERENCE_VALIDATION.md](docs/H6_REFERENCE_VALIDATION.md).

@@ -7,12 +7,9 @@
 int main() {
   hbmsim::EventQueue events;
   std::vector<int> order;
-  events.schedule(10, hbmsim::EventType::TransactionArrival,
-                  [&] { order.push_back(1); });
-  events.schedule(10, hbmsim::EventType::TransactionCompletion,
-                  [&] { order.push_back(2); });
-  events.schedule(5, hbmsim::EventType::ControllerWakeup,
-                  [&] { order.push_back(0); });
+  events.schedule_at(10, [&] { order.push_back(1); });
+  events.schedule_at(10, [&] { order.push_back(2); });
+  events.schedule_at(5, [&] { order.push_back(0); });
 
   events.run_until(5);
   assert((order == std::vector<int>{0}));
@@ -23,9 +20,17 @@ int main() {
 
   bool rejected_past_event = false;
   try {
-    events.schedule(9, hbmsim::EventType::TransactionArrival, [] {});
+    events.schedule_at(9, [] {});
   } catch (const std::invalid_argument&) {
     rejected_past_event = true;
   }
   assert(rejected_past_event);
+
+  hbmsim::EventQueue cancellable;
+  bool called = false;
+  const auto token = cancellable.schedule_at(7, [&] { called = true; });
+  assert(cancellable.cancel(token));
+  assert(cancellable.empty());
+  cancellable.run();
+  assert(!called);
 }

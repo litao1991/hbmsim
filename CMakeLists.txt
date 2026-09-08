@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(hbmsim VERSION 0.6.4 LANGUAGES CXX)
+project(hbmsim VERSION 0.7.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -27,7 +27,8 @@ add_executable(hbmsim src/main.cpp)
 target_link_libraries(hbmsim PRIVATE hbmsim_core)
 
 include(CTest)
-if(BUILD_TESTING)
+option(HBMSIM_BUILD_TESTING "Build HBMSim's own tests" ON)
+if(BUILD_TESTING AND HBMSIM_BUILD_TESTING)
   add_executable(test_event_queue tests/test_event_queue.cpp)
   target_link_libraries(test_event_queue PRIVATE hbmsim_core)
   add_test(NAME event_queue COMMAND test_event_queue)

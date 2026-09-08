@@ -12,9 +12,9 @@ The unit of simulated time is picoseconds. All configured timing parameters are 
 
 ```text
 Client / AI runtime
-        │ HbmTransaction {id, op, address, size, arrival_time, client}
+        │ HbmTransaction {id, op, address, size, arrival, metadata}
         ▼
-HbmSystem → splitter → address mapper → per-controller queues
+ISimScheduler → HbmSystem → splitter → address mapper → per-controller queues
         │                                  │
         │                       scheduler → command planner
         │                                  │
@@ -24,8 +24,9 @@ HbmSystem → splitter → address mapper → per-controller queues
 The first stable integration surface is deliberately small:
 
 ```cpp
-RequestToken submit(const HbmTransaction& transaction);
+SubmitResult try_submit_now(const HbmTransaction& transaction);
 void set_completion_callback(CompletionCallback callback);
+void set_capacity_callback(CapacityCallback callback);
 ```
 
 It can later satisfy a shared HBFSim `IMemoryTarget` contract, but no common HBM/HBF media model will be introduced.
@@ -51,6 +52,10 @@ It can later satisfy a shared HBFSim `IMemoryTarget` contract, but no common HBM
 | v0.6.2 | Complete | Queue, command, array, data-bus and refresh wait totals plus bank/pseudo-channel/channel busy statistics are emitted by the CLI. |
 | v0.6.3 | Complete | CI freezes HBMSim HBM2 v0.3 values, reruns the HBM2 three-simulator gate, and adds an HBM3 HBMSim/Ramulator gate. DRAMSys HBM3 is explicitly unsupported. |
 | v0.6.4 | Complete | Standard-owned prerequisite/transition tables now drive data, refresh and RFM commands; HBM2/HBM3 use independent row/column command buses and `tCL`/`tCWL`; optional same-address merging, exclusive latency stages, profile-aware semantic traces, and permanent HBM2/HBM3 reference gates are implemented. |
+| v0.7.0 | Complete | `ISimScheduler` owns absolute picosecond time, callback scheduling and cancellation. The standalone queue is an adapter, and `HbmSystem` no longer owns or advances an event queue. |
+| v0.7.1 | Complete | The core admits arrived work through `try_submit_now`, finite queues publish capacity notifications, completion history is opt-in, and duplicate-ID state is bounded by active requests. The CLI streams arrivals and completions. |
+| v0.7.2 | Complete | Configuration is split into Device/Controller/Simulation domains; logical completions are explicitly separated from the physical coalesced transfer; request merging is a controller policy. |
+| v0.7.3 | Complete | Traffic class, priority, opaque tag and ordering domain propagate end-to-end. HBFSim provides the shared scheduler adapter and a tested HBF-to-HBM fill vertical slice. |
 
 The versions are intentionally sequential: v0.4 is behavior-preserving only; v0.5 changes standard semantics only after v0.4's golden gate; v0.6 is the reference-validation gate. HBF, compute and AI workload work remain downstream of all three.
 

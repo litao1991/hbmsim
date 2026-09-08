@@ -1,11 +1,34 @@
 #include "hbmsim/controller/hbm_controller.h"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
 namespace hbmsim {
 namespace {
+
+class NoRequestCoalescer final : public IRequestCoalescer {
+ public:
+  bool can_merge(const HbmAccess&, const HbmAccess&) const override {
+    return false;
+  }
+};
+
+class SameAddressReadCoalescer final : public IRequestCoalescer {
+ public:
+  bool can_merge(const HbmAccess& physical,
+                 const HbmAccess& logical) const override {
+    const auto& left = physical.address;
+    const auto& right = logical.address;
+    return physical.op == HbmOp::Read && logical.op == HbmOp::Read &&
+           left.flat_bank == right.flat_bank && left.row == right.row &&
+           left.column == right.column &&
+           physical.size_bytes == logical.size_bytes &&
+           physical.metadata.ordering_domain ==
+               logical.metadata.ordering_domain;
+  }
+};
 
 bool is_data_command(HbmCommand command) {
   return command == HbmCommand::Read || command == HbmCommand::Write ||
@@ -65,6 +88,14 @@ SimTime maintenance_duration(HbmCommand command,
 
 }  // namespace
 
+std::unique_ptr<IRequestCoalescer> make_request_coalescer(
+    bool same_address_reads) {
+  if (same_address_reads) {
+    return std::make_unique<SameAddressReadCoalescer>();
+  }
+  return std::make_unique<NoRequestCoalescer>();
+}
+
 HbmController::HbmController(HbmControllerConfig config,
                              const IHbmAddressMapper& mapper, HbmStats& stats)
     : config_(std::move(config)),
@@ -75,6 +106,8 @@ HbmController::HbmController(HbmControllerConfig config,
       scheduler_(scheduler_for(config_.scheduler)),
       row_policy_(make_row_policy(config_.row_policy)),
       refresh_manager_(make_refresh_manager(config_.refresh_policy)),
+      request_coalescer_(make_request_coalescer(
+          config_.enable_request_merging)),
       banks_(config_.bank_count),
       data_bus_ready_at_(config_.pseudo_channel_count, 0) {}
 
@@ -83,6 +116,26 @@ bool HbmController::can_reserve(std::size_t reads, std::size_t writes) const {
                       read_queue_.size() + reserved_reads_, reads) &&
          has_capacity(config_.write_queue_capacity,
                       write_queue_.size() + reserved_writes_, writes);
+}
+
+std::size_t HbmController::available_read_slots() const {
+  if (config_.read_queue_capacity == 0) {
+    return std::numeric_limits<std::size_t>::max();
+  }
+  const auto used = read_queue_.size() + reserved_reads_;
+  return used >= config_.read_queue_capacity
+             ? 0
+             : config_.read_queue_capacity - used;
+}
+
+std::size_t HbmController::available_write_slots() const {
+  if (config_.write_queue_capacity == 0) {
+    return std::numeric_limits<std::size_t>::max();
+  }
+  const auto used = write_queue_.size() + reserved_writes_;
+  return used >= config_.write_queue_capacity
+             ? 0
+             : config_.write_queue_capacity - used;
 }
 
 void HbmController::reserve(std::size_t reads, std::size_t writes) {
@@ -199,7 +252,8 @@ std::optional<HbmController::Candidate> HbmController::choose_next(
       access.command_eligible = false;
     }
     candidates.push_back({index, is_write, to_dram_command(command), ready,
-                          access.sequence, data && !access.activated, data});
+                          access.sequence, data && !access.activated, data,
+                          access.metadata.priority});
   }
   const auto selected = scheduler_.choose(candidates, now);
   if (!selected.has_value()) return std::nullopt;
@@ -430,15 +484,9 @@ std::optional<HbmIssuedAccess> HbmController::issue(Candidate candidate,
   std::vector<HbmAccess> completed;
   completed.push_back(access);
   queue.erase(queue.begin() + static_cast<std::ptrdiff_t>(candidate.index));
-  if (config_.enable_request_merging) {
+  {
     for (auto iterator = queue.begin(); iterator != queue.end();) {
-      const auto& other = iterator->address;
-      const bool same_location =
-          other.flat_bank == completed_address.flat_bank &&
-          other.row == completed_address.row &&
-          other.column == completed_address.column &&
-          iterator->size_bytes == completed_size;
-      if (!same_location) {
+      if (!request_coalescer_->can_merge(completed.front(), *iterator)) {
         ++iterator;
         continue;
       }

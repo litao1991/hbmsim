@@ -20,6 +20,7 @@ struct SchedulerCandidate {
   std::uint64_t sequence = 0;
   bool row_hit = false;
   bool data_command = false;
+  std::uint8_t request_priority = 0;
 };
 
 class IScheduler {

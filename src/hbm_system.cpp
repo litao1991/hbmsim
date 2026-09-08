@@ -7,149 +7,164 @@
 
 namespace hbmsim {
 
+DeviceSpec DeviceSpec::custom() {
+  DeviceSpec device;
+  device.organization.topology = {};
+  device.organization.columns_per_row = 128;
+  device.organization.rows_per_bank = 16'384;
+  device.organization.physical_burst_bytes = 64;
+  device.organization.address_interleave_bytes = 64;
+  device.organization.address_mapping = AddressMapping::Linear;
+  device.organization.pseudo_channel_rate = {32, 1'000};
+  return device;
+}
+
+DeviceSpec DeviceSpec::from_standard(
+    std::shared_ptr<const HbmStandard> standard) {
+  if (!standard) throw std::invalid_argument("device standard is null");
+  return DeviceSpec{standard->organization(), standard->timing(),
+                    std::move(standard)};
+}
+
 void HbmConfig::validate() const {
-  topology.validate();
-  pseudo_channel_rate.validate();
-  if (address_interleave_bytes == 0 || columns_per_row == 0 ||
-      rows_per_bank == 0 || physical_burst_bytes == 0) {
+  const auto& organization = device.organization;
+  organization.topology.validate();
+  organization.pseudo_channel_rate.validate();
+  if (organization.address_interleave_bytes == 0 ||
+      organization.columns_per_row == 0 ||
+      organization.rows_per_bank == 0 ||
+      organization.physical_burst_bytes == 0) {
     throw std::invalid_argument("HBM geometry and burst sizes must be non-zero");
   }
-  if (write_drain_low_watermark > write_drain_high_watermark) {
+  if (controller.write_drain_low_watermark >
+      controller.write_drain_high_watermark) {
     throw std::invalid_argument("write drain low watermark exceeds high watermark");
   }
-  if (simulation_access_granularity_bytes != 0 &&
-      simulation_access_granularity_bytes < physical_burst_bytes) {
+  if (simulation.simulation_access_granularity_bytes != 0 &&
+      simulation.simulation_access_granularity_bytes <
+          organization.physical_burst_bytes) {
     throw std::invalid_argument("simulation access granularity is below physical burst size");
   }
-  if (simulation_access_granularity_bytes != 0 &&
-      simulation_access_granularity_bytes % physical_burst_bytes != 0) {
+  if (simulation.simulation_access_granularity_bytes != 0 &&
+      simulation.simulation_access_granularity_bytes %
+              organization.physical_burst_bytes !=
+          0) {
     throw std::invalid_argument("simulation access granularity must be a burst multiple");
   }
-  const auto duration = refresh_duration(refresh_policy, timing);
-  if (refresh_interval != 0 && refresh_interval < duration) {
+  const auto duration =
+      refresh_duration(controller.refresh_policy, device.timing);
+  if (controller.refresh_interval != 0 &&
+      controller.refresh_interval < duration) {
     throw std::invalid_argument("refresh interval must be at least its duration");
   }
-  if (enable_rfm &&
-      (!standard || !standard->supports(HbmCommand::RfmPerBank))) {
+  if (controller.enable_rfm &&
+      (!device.standard ||
+       !device.standard->supports(HbmCommand::RfmPerBank))) {
     throw std::invalid_argument("selected standard does not support RFM");
   }
-  if (enable_rfm && rfm_activation_threshold == 0) {
+  if (controller.enable_rfm && controller.rfm_activation_threshold == 0) {
     throw std::invalid_argument("RFM requires a non-zero activation threshold");
   }
 }
 
 HbmConfig HbmConfig::hbm4_8000() {
   HbmConfig config;
-  config.standard = std::make_shared<Hbm4Standard>();
-  const auto& organization = config.standard->organization();
-  config.topology = organization.topology;
-  config.columns_per_row = organization.columns_per_row;
-  config.rows_per_bank = organization.rows_per_bank;
-  config.physical_burst_bytes = organization.physical_burst_bytes;
-  config.address_interleave_bytes = organization.address_interleave_bytes;
-  config.address_mapping = organization.address_mapping;
-  config.pseudo_channel_rate = organization.pseudo_channel_rate;
-  config.timing = config.standard->timing();
+  config.device =
+      DeviceSpec::from_standard(std::make_shared<Hbm4Standard>());
   return config;
 }
 
 HbmConfig HbmConfig::hbm2_2000() {
   HbmConfig config;
-  config.standard = std::make_shared<Hbm2Standard>();
-  const auto& organization = config.standard->organization();
-  config.topology = organization.topology;
-  config.timing = config.standard->timing();
-  config.columns_per_row = organization.columns_per_row;
-  config.rows_per_bank = organization.rows_per_bank;
-  config.address_interleave_bytes = organization.address_interleave_bytes;
-  config.address_mapping = organization.address_mapping;
-  config.physical_burst_bytes = organization.physical_burst_bytes;
-  config.pseudo_channel_rate = organization.pseudo_channel_rate;
-  config.enable_request_merging = true;
+  config.device =
+      DeviceSpec::from_standard(std::make_shared<Hbm2Standard>());
+  config.controller.request_merge_policy =
+      RequestMergePolicy::SameAddressRead;
   return config;
 }
 
 HbmConfig HbmConfig::hbm3_6400() {
   HbmConfig config;
-  config.standard = std::make_shared<Hbm3Standard>();
-  const auto& organization = config.standard->organization();
-  config.topology = organization.topology;
-  config.timing = config.standard->timing();
-  config.columns_per_row = organization.columns_per_row;
-  config.rows_per_bank = organization.rows_per_bank;
-  config.address_interleave_bytes = organization.address_interleave_bytes;
-  config.address_mapping = organization.address_mapping;
-  config.physical_burst_bytes = organization.physical_burst_bytes;
-  config.pseudo_channel_rate = organization.pseudo_channel_rate;
-  config.enable_request_merging = true;
+  config.device =
+      DeviceSpec::from_standard(std::make_shared<Hbm3Standard>());
+  config.controller.request_merge_policy =
+      RequestMergePolicy::SameAddressRead;
   return config;
 }
 
-HbmSystem::HbmSystem(HbmConfig config)
-    : config_(std::move(config)) {
-  if (config_.standard) {
-    const auto& organization = config_.standard->organization();
-    config_.topology = organization.topology;
-    config_.timing = config_.standard->timing();
-    config_.columns_per_row = organization.columns_per_row;
-    config_.rows_per_bank = organization.rows_per_bank;
-    config_.physical_burst_bytes = organization.physical_burst_bytes;
-    config_.address_interleave_bytes = organization.address_interleave_bytes;
-    config_.address_mapping = organization.address_mapping;
-    config_.pseudo_channel_rate = organization.pseudo_channel_rate;
-  }
+HbmSystem::HbmSystem(HbmConfig config, ISimScheduler& scheduler)
+    : config_(std::move(config)), scheduler_(scheduler) {
   config_.validate();
+  const auto& organization = config_.device.organization;
+  const auto& policy = config_.controller;
   address_mapper_ = std::make_unique<HbmAddressMapper>(
-      config_.topology, config_.address_interleave_bytes,
-      config_.columns_per_row, config_.rows_per_bank, config_.address_mapping);
-  const auto channel_count = config_.topology.channel_count();
+      organization.topology, organization.address_interleave_bytes,
+      organization.columns_per_row, organization.rows_per_bank,
+      organization.address_mapping);
+  const auto channel_count = organization.topology.channel_count();
   const auto banks_per_channel = address_mapper_->bank_count() / channel_count;
   stats_.channels.resize(channel_count);
   controllers_.reserve(channel_count);
   for (std::uint32_t channel = 0; channel < channel_count; ++channel) {
     auto& channel_stats = stats_.channels[channel];
     channel_stats.pseudo_channels.resize(
-        config_.topology.pseudo_channels_per_channel);
+        organization.topology.pseudo_channels_per_channel);
     channel_stats.banks.resize(banks_per_channel);
     HbmControllerConfig controller_config;
     controller_config.channel = channel;
     controller_config.first_flat_bank = channel * banks_per_channel;
     controller_config.bank_count = banks_per_channel;
     controller_config.pseudo_channel_count =
-        config_.topology.pseudo_channels_per_channel;
-    controller_config.timing = config_.timing;
-    controller_config.standard = config_.standard;
-    controller_config.data_rate = config_.pseudo_channel_rate;
-    controller_config.scheduler = config_.scheduler;
-    controller_config.row_policy = config_.row_policy;
-    controller_config.refresh_policy = config_.refresh_policy;
+        organization.topology.pseudo_channels_per_channel;
+    controller_config.timing = config_.device.timing;
+    controller_config.standard = config_.device.standard;
+    controller_config.data_rate = organization.pseudo_channel_rate;
+    controller_config.scheduler = policy.scheduler;
+    controller_config.row_policy = policy.row_policy;
+    controller_config.refresh_policy = policy.refresh_policy;
     controller_config.write_drain_high_watermark =
-        config_.write_drain_high_watermark;
+        policy.write_drain_high_watermark;
     controller_config.write_drain_low_watermark =
-        config_.write_drain_low_watermark;
-    controller_config.read_queue_capacity = config_.read_queue_capacity;
-    controller_config.write_queue_capacity = config_.write_queue_capacity;
-    controller_config.enable_request_merging = config_.enable_request_merging;
-    controller_config.starvation_threshold = config_.starvation_threshold;
-    controller_config.refresh_interval = config_.refresh_interval;
-    controller_config.enable_rfm = config_.enable_rfm;
+        policy.write_drain_low_watermark;
+    controller_config.read_queue_capacity = policy.read_queue_capacity;
+    controller_config.write_queue_capacity = policy.write_queue_capacity;
+    controller_config.enable_request_merging =
+        policy.request_merge_policy == RequestMergePolicy::SameAddressRead;
+    controller_config.starvation_threshold = policy.starvation_threshold;
+    controller_config.refresh_interval = policy.refresh_interval;
+    controller_config.enable_rfm = policy.enable_rfm;
     controller_config.rfm_activation_threshold =
-        config_.rfm_activation_threshold;
+        policy.rfm_activation_threshold;
     controllers_.push_back(std::make_unique<HbmController>(
         controller_config, *address_mapper_, stats_));
   }
 }
 
-SubmitResult HbmSystem::submit(const HbmTransaction& transaction) {
+HbmSystem::~HbmSystem() {
+  for (const auto token : pending_events_) scheduler_.cancel(token);
+}
+
+EventToken HbmSystem::schedule_event(SimTime when, EventCallback callback) {
+  auto token = std::make_shared<EventToken>(0);
+  *token = scheduler_.schedule_at(
+      when, [this, token, callback = std::move(callback)]() mutable {
+        pending_events_.erase(*token);
+        callback();
+      });
+  pending_events_.insert(*token);
+  return *token;
+}
+
+SubmitResult HbmSystem::try_submit_now(const HbmTransaction& transaction) {
   if (transaction.id == 0 || transaction.size_bytes == 0) {
     return {SubmitStatus::InvalidArgument, {},
             "transaction id and size_bytes must both be non-zero"};
   }
-  if (transaction.arrival_time < now()) {
-    return {SubmitStatus::ArrivalInPast, {},
-            "transaction arrival time is earlier than simulator time"};
+  if (transaction.arrival_time > now()) {
+    return {SubmitStatus::ArrivalInFuture, {},
+            "transaction must be submitted at or after its arrival time"};
   }
-  if (known_transaction_ids_.contains(transaction.id)) {
+  if (parents_.contains(transaction.id)) {
     return {SubmitStatus::DuplicateId, {}, "transaction id was already submitted"};
   }
   auto accesses = split_transaction(transaction);
@@ -176,13 +191,8 @@ SubmitResult HbmSystem::submit(const HbmTransaction& transaction) {
     controllers_[channel]->reserve(reservations[channel].reads,
                                    reservations[channel].writes);
   }
-  known_transaction_ids_.insert(transaction.id);
   ++stats_.submitted_transactions;
-  event_queue_.schedule(
-      transaction.arrival_time, EventType::TransactionArrival,
-      [this, transaction, accesses = std::move(accesses)]() mutable {
-        admit(transaction, std::move(accesses));
-      });
+  admit(transaction, std::move(accesses));
   return {SubmitStatus::Accepted, RequestToken{transaction.id}, {}};
 }
 
@@ -190,18 +200,20 @@ void HbmSystem::set_completion_callback(CompletionCallback callback) {
   completion_callback_ = std::move(callback);
 }
 
-void HbmSystem::run() { event_queue_.run(); }
-
-void HbmSystem::run_until(SimTime until) { event_queue_.run_until(until); }
+void HbmSystem::set_capacity_callback(CapacityCallback callback) {
+  capacity_callback_ = std::move(callback);
+}
 
 std::vector<HbmSystem::Access> HbmSystem::split_transaction(
     const HbmTransaction& transaction) const {
   std::vector<Access> accesses;
   auto address = transaction.address;
   auto remaining = transaction.size_bytes;
-  const auto max_group_bytes = config_.simulation_access_granularity_bytes == 0
-                                   ? config_.physical_burst_bytes
-                                   : config_.simulation_access_granularity_bytes;
+  const auto& organization = config_.device.organization;
+  const auto max_group_bytes =
+      config_.simulation.simulation_access_granularity_bytes == 0
+          ? organization.physical_burst_bytes
+          : config_.simulation.simulation_access_granularity_bytes;
   std::optional<Access> group;
   HbmAddress previous_address;
   const auto same_resource = [](const HbmAddress& left,
@@ -212,8 +224,9 @@ std::vector<HbmSystem::Access> HbmSystem::split_transaction(
            left.row == right.row;
   };
   while (remaining != 0) {
-    const auto burst_remainder = address % config_.physical_burst_bytes;
-    const auto burst_boundary = config_.physical_burst_bytes - burst_remainder;
+    const auto burst_remainder = address % organization.physical_burst_bytes;
+    const auto burst_boundary =
+        organization.physical_burst_bytes - burst_remainder;
     const auto mapping_boundary =
         address_mapper_->next_mapping_boundary(address);
     const auto bytes = std::min({remaining, burst_boundary, mapping_boundary});
@@ -232,6 +245,7 @@ std::vector<HbmSystem::Access> HbmSystem::split_transaction(
       group = Access{transaction.id, transaction.op, mapped, bytes,
                      transaction.arrival_time, transaction.client, 0,
                      HbmAccessClass::RowClosed};
+      group->metadata = transaction.metadata;
     }
     previous_address = mapped;
     remaining -= bytes;
@@ -273,8 +287,7 @@ void HbmSystem::schedule_controller_wake(std::uint32_t channel, SimTime when) {
   when = std::max(when, now());
   auto& controller = *controllers_.at(channel);
   if (!controller.mark_wakeup(when)) return;
-  event_queue_.schedule(when, EventType::ControllerWakeup,
-                        [this, channel, when] {
+  schedule_event(when, [this, channel, when] {
     controllers_.at(channel)->clear_wakeup(when);
     drive_controller(channel);
   });
@@ -283,8 +296,7 @@ void HbmSystem::schedule_controller_wake(std::uint32_t channel, SimTime when) {
 void HbmSystem::schedule_refresh_due(std::uint32_t channel) {
   const auto due = controllers_.at(channel)->claim_refresh_event();
   if (!due.has_value()) return;
-  event_queue_.schedule(*due, EventType::RefreshDue,
-                        [this, channel, due = *due] {
+  schedule_event(*due, [this, channel, due = *due] {
     auto& controller = *controllers_.at(channel);
     controller.handle_refresh_event(due);
     schedule_controller_wake(channel, due);
@@ -297,12 +309,18 @@ void HbmSystem::drive_controller(std::uint32_t channel) {
   if (step.issued_access.has_value()) {
     const auto issued = *step.issued_access;
     for (const auto& access : issued.accesses) {
-      event_queue_.schedule(
-          issued.completion_time, EventType::TransactionCompletion,
-          [this, access, channel,
-           completion_time = issued.completion_time] {
+      schedule_event(
+          issued.completion_time,
+          [this, access, channel, completion_time = issued.completion_time] {
             finish_access(access, channel, completion_time);
           });
+    }
+    if (capacity_callback_) {
+      schedule_event(now(), [this, channel, when = now()] {
+        const auto& controller = *controllers_.at(channel);
+        capacity_callback_({when, channel, controller.available_read_slots(),
+                            controller.available_write_slots()});
+      });
     }
   }
   if (step.wake_at.has_value()) {
@@ -349,10 +367,13 @@ void HbmSystem::complete_parent(TransactionId id) {
   // Every child is enqueued at the parent's arrival time, so that access's
   // exclusive stage partition also exactly partitions the parent latency.
   completion.latency_breakdown = request.last_latency_breakdown;
+  completion.metadata = request.transaction.metadata;
   ++stats_.completed_transactions;
   if (completion.op == HbmOp::Read) stats_.read_bytes += completion.size_bytes;
   else stats_.write_bytes += completion.size_bytes;
-  completions_.push_back(completion);
+  if (config_.simulation.retain_completions) {
+    completions_.push_back(completion);
+  }
   if (completion_callback_) completion_callback_(completion);
   parents_.erase(iterator);
 }

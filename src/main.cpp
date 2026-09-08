@@ -1,4 +1,5 @@
 #include "hbmsim/hbm_system.h"
+#include "hbmsim/kernel/event_queue.h"
 
 #include <fstream>
 #include <iostream>
@@ -63,7 +64,41 @@ int main(int argc, char** argv) {
     return 2;
   }
 
-  hbmsim::HbmSystem system(config);
+  hbmsim::EventQueue events;
+  hbmsim::HbmSystem system(config, events);
+  std::ofstream completion_output;
+  if (!completion_path.empty()) {
+    completion_output.open(completion_path);
+    if (!completion_output) {
+      std::cerr << "cannot write completions: " << completion_path << '\n';
+      return 2;
+    }
+    completion_output
+        << "id,op,address,size_bytes,channel,arrival_ps,completion_ps,latency_ps,access_class,"
+           "queue_wait_ps,command_phase_ps,data_ready_ps,data_bus_wait_ps,data_service_ps,"
+           "traffic_class,priority,opaque_tag,ordering_domain\n";
+    system.set_completion_callback([&](const hbmsim::HbmCompletion& completion) {
+      const char* op = completion.op == hbmsim::HbmOp::Read ? "READ" : "WRITE";
+      const char* access_class = completion.access_class == hbmsim::HbmAccessClass::RowHit
+                                     ? "row_hit"
+                                     : completion.access_class == hbmsim::HbmAccessClass::RowClosed
+                                           ? "row_closed"
+                                           : "row_conflict";
+      completion_output << completion.id << ',' << op << ',' << completion.address << ','
+                        << completion.size_bytes << ',' << completion.channel << ','
+                        << completion.arrival_time << ',' << completion.completion_time << ','
+                        << completion.latency << ',' << access_class << ','
+                        << completion.latency_breakdown.queue_wait << ','
+                        << completion.latency_breakdown.command_phase << ','
+                        << completion.latency_breakdown.data_ready << ','
+                        << completion.latency_breakdown.data_bus_wait << ','
+                        << completion.latency_breakdown.data_service << ','
+                        << static_cast<int>(completion.metadata.traffic_class) << ','
+                        << static_cast<unsigned>(completion.metadata.priority) << ','
+                        << completion.metadata.opaque_tag << ','
+                        << completion.metadata.ordering_domain << '\n';
+    });
+  }
   std::string line;
   std::uint64_t line_number = 0;
   std::uint64_t id = 1;
@@ -85,7 +120,17 @@ int main(int argc, char** argv) {
       hbmsim::HbmTransaction transaction{
           id++, op, parse_u64(fields[2]), parse_u64(fields[3]), parse_u64(fields[0]),
           fields.size() == 5 ? static_cast<hbmsim::ClientId>(parse_u64(fields[4])) : 0};
-      const auto result = system.submit(transaction);
+      if (transaction.arrival_time < events.now()) {
+        throw std::runtime_error("trace arrivals must be nondecreasing");
+      }
+      events.run_until(transaction.arrival_time);
+      auto result = system.try_submit_now(transaction);
+      while (result.status == hbmsim::SubmitStatus::Backpressure) {
+        if (!events.run_next()) {
+          throw std::runtime_error("backpressure without a future capacity event");
+        }
+        result = system.try_submit_now(transaction);
+      }
       if (!result.accepted()) {
         throw std::runtime_error(result.message);
       }
@@ -95,33 +140,7 @@ int main(int argc, char** argv) {
     return 2;
   }
 
-  system.run();
-  if (!completion_path.empty()) {
-    std::ofstream completions(completion_path);
-    if (!completions) {
-      std::cerr << "cannot write completions: " << argv[3] << '\n';
-      return 2;
-    }
-    completions << "id,op,address,size_bytes,channel,arrival_ps,completion_ps,latency_ps,access_class,"
-                   "queue_wait_ps,command_phase_ps,data_ready_ps,data_bus_wait_ps,data_service_ps\n";
-    for (const auto& completion : system.completions()) {
-      const char* op = completion.op == hbmsim::HbmOp::Read ? "READ" : "WRITE";
-      const char* access_class = completion.access_class == hbmsim::HbmAccessClass::RowHit
-                                     ? "row_hit"
-                                     : completion.access_class == hbmsim::HbmAccessClass::RowClosed
-                                           ? "row_closed"
-                                           : "row_conflict";
-      completions << completion.id << ',' << op << ',' << completion.address << ','
-                  << completion.size_bytes << ',' << completion.channel << ','
-                  << completion.arrival_time << ',' << completion.completion_time << ','
-                  << completion.latency << ',' << access_class << ','
-                  << completion.latency_breakdown.queue_wait << ','
-                  << completion.latency_breakdown.command_phase << ','
-                  << completion.latency_breakdown.data_ready << ','
-                  << completion.latency_breakdown.data_bus_wait << ','
-                  << completion.latency_breakdown.data_service << '\n';
-    }
-  }
+  events.run();
   const auto& stats = system.stats();
   std::cout << "completed_transactions," << stats.completed_transactions << '\n'
             << "modeled_accesses," << stats.modeled_accesses << '\n'

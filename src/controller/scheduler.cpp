@@ -15,6 +15,9 @@ class FrFcfsScheduler final : public IScheduler {
       const auto right_ready = right.ready_at <= now;
       if (left_ready != right_ready) return left_ready;
       if (!left_ready && left.ready_at != right.ready_at) return left.ready_at < right.ready_at;
+      if (left.request_priority != right.request_priority) {
+        return left.request_priority > right.request_priority;
+      }
       const auto left_priority = left.data_command ? (left.row_hit ? 3 : 2) : 1;
       const auto right_priority = right.data_command ? (right.row_hit ? 3 : 2) : 1;
       if (left_priority != right_priority) return left_priority > right_priority;
@@ -33,6 +36,9 @@ class FrFcfsRowHitScheduler final : public IScheduler {
       const auto right_ready = right.ready_at <= now;
       if (left_ready != right_ready) return left_ready;
       if (!left_ready && left.ready_at != right.ready_at) return left.ready_at < right.ready_at;
+      if (left.request_priority != right.request_priority) {
+        return left.request_priority > right.request_priority;
+      }
       if (left.row_hit != right.row_hit) return left.row_hit;
       return left.sequence < right.sequence;
     });

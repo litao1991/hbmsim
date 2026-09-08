@@ -20,7 +20,9 @@
 
 namespace hbmsim {
 
-struct HbmAccess {
+// One logical requester. Multiple logical accesses may share one physical
+// command/data transfer when the configured coalescer declares them safe.
+struct LogicalAccess {
   TransactionId parent_id = 0;
   HbmOp op = HbmOp::Read;
   HbmAddress address{};
@@ -37,7 +39,20 @@ struct HbmAccess {
   bool command_eligible = false;
   SimTime command_eligible_since = 0;
   HbmLatencyBreakdown latency_breakdown{};
+  RequestMetadata metadata{};
 };
+
+using HbmAccess = LogicalAccess;
+
+class IRequestCoalescer {
+ public:
+  virtual ~IRequestCoalescer() = default;
+  [[nodiscard]] virtual bool can_merge(const HbmAccess& physical,
+                                       const HbmAccess& logical) const = 0;
+};
+
+[[nodiscard]] std::unique_ptr<IRequestCoalescer> make_request_coalescer(
+    bool same_address_reads);
 
 struct HbmControllerConfig {
   std::uint32_t channel = 0;
@@ -62,6 +77,7 @@ struct HbmControllerConfig {
 };
 
 struct HbmIssuedAccess {
+  // The vector is the logical fan-out of one physical DRAM access.
   std::vector<HbmAccess> accesses;
   SimTime completion_time = 0;
 };
@@ -84,6 +100,8 @@ class HbmController {
     return outstanding_accesses_ != 0;
   }
   [[nodiscard]] bool can_reserve(std::size_t reads, std::size_t writes) const;
+  [[nodiscard]] std::size_t available_read_slots() const;
+  [[nodiscard]] std::size_t available_write_slots() const;
   void reserve(std::size_t reads, std::size_t writes);
   void cancel_reservation(std::size_t reads, std::size_t writes);
   void admit_reserved(HbmAccess access, SimTime now);
@@ -141,6 +159,7 @@ class HbmController {
   const IScheduler& scheduler_;
   std::unique_ptr<IRowPolicy> row_policy_;
   std::unique_ptr<IRefreshManager> refresh_manager_;
+  std::unique_ptr<IRequestCoalescer> request_coalescer_;
   std::deque<HbmAccess> read_queue_;
   std::deque<HbmAccess> write_queue_;
   std::vector<HbmBankState> banks_;
