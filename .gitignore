@@ -3,6 +3,8 @@
 /validation/*
 !/validation/profiles/
 !/validation/profiles/hbm2_2000.json
+!/validation/baselines/
+!/validation/baselines/hbmsim-hbm2_2000-v0.3.csv
 /out/
 /.cache/
 *.swp

@@ -10,7 +10,7 @@ namespace hbmsim {
 // A standard owns the meaning and ordering of these levels.  HBM uses
 // Stack/Channel/PseudoChannel/BankGroup/Bank/Row/Column; DDR omits Stack and
 // PseudoChannel and adds Rank.
-enum class AddressLevel { Stack, Channel, PseudoChannel, Rank, BankGroup, Bank, Row, Column };
+enum class AddressLevel { Stack, Channel, PseudoChannel, Sid, Rank, BankGroup, Bank, Row, Column };
 
 struct AddressComponent {
   AddressLevel level;

@@ -13,7 +13,7 @@ hbmsim::HbmConfig base_config() {
   config.address_interleave_bytes = 64;
   config.columns_per_row = 2;
   config.rows_per_bank = 8;
-  config.channel_bandwidth_bytes_per_ns = 1000;
+  config.pseudo_channel_rate = {1'000, 1'000};
   config.timing.t_rcd = 10;
   config.timing.t_rp = 5;
   config.timing.t_cl = 20;
@@ -34,7 +34,7 @@ int main() {
   // V0.2: the HBM2_2000 profile is the explicit validation baseline.
   {
     const auto config = hbmsim::HbmConfig::hbm2_2000();
-    assert(config.standard == hbmsim::HbmStandard::Hbm2);
+    assert(config.standard->name() == "HBM2");
     assert(config.topology.pseudo_channels_per_channel == 2);
     assert(config.topology.bank_groups_per_pseudo_channel == 4);
     assert(config.topology.banks_per_bank_group == 4);
@@ -58,7 +58,11 @@ int main() {
   // accepted at the same time complete together when they select PC 0/1.
   {
     auto config = hbmsim::HbmConfig::hbm2_2000();
+    // This isolates pseudo-channel data resources from standard command-bus
+    // occupancy; the standard profile itself is covered separately above.
+    config.standard.reset();
     config.timing.t_rcd = 0;
+    config.timing.t_command = 0;
     config.timing.t_rcd_rd = 0;
     config.timing.t_rcd_wr = 0;
     config.timing.t_cl = 0;
@@ -71,7 +75,7 @@ int main() {
     config.timing.t_faw = 0;
     config.timing.t_wtr_s = 0;
     config.timing.t_wtr_l = 0;
-    config.channel_bandwidth_bytes_per_ns = 16;
+    config.pseudo_channel_rate = {16, 1'000};
     hbmsim::HbmSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 32, 0, 0}).accepted());
     assert(system.submit({2, hbmsim::HbmOp::Read, 32, 32, 0, 0}).accepted());
@@ -85,7 +89,7 @@ int main() {
   // V0.5: HBM3 is a resolved standard profile, not an enum-only label.
   {
     const auto config = hbmsim::HbmConfig::hbm3_6400();
-    assert(config.standard == hbmsim::HbmStandard::Hbm3);
+    assert(config.standard->name() == "HBM3");
     assert(config.timing.use_extended_hbm_timing);
     assert(config.timing.t_rcd_rd == 19'375);
     assert(config.timing.t_rcd_wr == 9'375);
@@ -173,7 +177,7 @@ int main() {
     config.simulation_access_granularity_bytes = 4096;
     config.timing.t_rcd = 0;
     config.timing.t_cl = 0;
-    config.channel_bandwidth_bytes_per_ns = 100'000;
+    config.pseudo_channel_rate = {100'000, 1'000};
     hbmsim::HbmSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 16 * 1024, 0, 0}).accepted());
     system.run();
@@ -193,7 +197,7 @@ int main() {
     config.simulation_access_granularity_bytes = 4096;
     config.timing.t_rcd = 0;
     config.timing.t_cl = 0;
-    config.channel_bandwidth_bytes_per_ns = 100'000;
+    config.pseudo_channel_rate = {100'000, 1'000};
     hbmsim::HbmSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 256, 0, 0}).accepted());
     system.run();
@@ -210,7 +214,7 @@ int main() {
     config.simulation_access_granularity_bytes = 4096;
     config.timing.t_rcd = 0;
     config.timing.t_cl = 0;
-    config.channel_bandwidth_bytes_per_ns = 100'000;
+    config.pseudo_channel_rate = {100'000, 1'000};
     hbmsim::HbmSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 256, 0, 0}).accepted());
     system.run();
@@ -241,7 +245,7 @@ int main() {
     config.timing.t_rcd = 0;
     config.timing.t_cl = 0;
     config.timing.t_rfc = 10;
-    config.channel_bandwidth_bytes_per_ns = 1000;
+    config.pseudo_channel_rate = {1'000, 1'000};
     hbmsim::HbmSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
     assert(system.submit({2, hbmsim::HbmOp::Read, 0, 64, 500, 0}).accepted());
@@ -251,32 +255,73 @@ int main() {
     assert(system.stats().channels[0].refreshes == 5);
   }
 
-  // H6: HBM4 RFM is threshold-triggered.  HBM4 maps at 32 B granularity,
-  // so each 64 B request below touches two row resources and produces two
-  // threshold crossings across the two requests.
+  // H6: HBM4 RFM is threshold-triggered. Alternate two rows in one bank so
+  // four real-profile requests trigger RFM; each maintenance close forces the
+  // interrupted request to reactivate, so the deliberately tiny threshold
+  // produces three events.
   {
     auto config = hbmsim::HbmConfig::hbm4_8000();
-    config.columns_per_row = 1;
-    config.timing.t_rcd = 5;
-    config.timing.t_rp = 0;
-    config.timing.t_ras = 0;
-    config.timing.t_rc = 3;
-    config.timing.t_cl = 0;
-    config.timing.t_ccd = 0;
-    config.timing.t_rrd = 0;
-    config.timing.t_faw = 0;
-    config.timing.t_wtr = 0;
-    config.timing.t_rtw = 0;
-    config.timing.t_rfmpb = 10;
     config.enable_rfm = true;
     config.rfm_activation_threshold = 2;
-    config.channel_bandwidth_bytes_per_ns = 1000;
+    hbmsim::HbmSystem system(config);
+    assert(system.submit({1, hbmsim::HbmOp::Read, 0, 32, 0, 0}).accepted());
+    assert(system.submit({2, hbmsim::HbmOp::Read, 8'192, 32, 1'000'000, 0}).accepted());
+    assert(system.submit({3, hbmsim::HbmOp::Read, 0, 32, 2'000'000, 0}).accepted());
+    assert(system.submit({4, hbmsim::HbmOp::Read, 8'192, 32, 3'000'000, 0}).accepted());
+    system.run();
+    assert(system.stats().rfm_events == 3);
+    assert(system.stats().channels[0].rfm_events == 3);
+    assert(system.completions().size() == 4);
+  }
+
+  // V0.6: rational transport rates represent HBM3's 25.6 B/ns exactly.
+  {
+    const hbmsim::BandwidthRate rate{32, 1'250};
+    assert(rate.transfer_time(32) == 1'250);
+    assert(rate.transfer_time(64) == 2'500);
+  }
+
+  // V0.6: future arrivals reserve finite controller queue capacity and
+  // receive explicit backpressure instead of growing an unbounded queue.
+  {
+    auto config = base_config();
+    config.read_queue_capacity = 1;
     hbmsim::HbmSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
-    assert(system.submit({2, hbmsim::HbmOp::Read, 32, 64, 100, 0}).accepted());
+    const auto rejected = system.submit({2, hbmsim::HbmOp::Read, 64, 64, 0, 0});
+    assert(rejected.status == hbmsim::SubmitStatus::Backpressure);
     system.run();
-    assert(system.stats().rfm_events == 2);
-    assert(system.stats().channels[0].rfm_events == 2);
-    assert(system.completions().size() == 2);
+    assert(system.submit({2, hbmsim::HbmOp::Read, 64, 64,
+                          system.now(), 0}).accepted());
+    system.run();
+    assert(system.stats().rejected_transactions == 1);
+    assert(system.stats().channels[0].queue.max_read_depth == 1);
+  }
+
+  // V0.5: a closed-row standard policy emits auto-precharge data commands;
+  // the next same-row request therefore starts closed without a separate PRE.
+  {
+    auto config = hbmsim::HbmConfig::hbm2_2000();
+    config.row_policy = hbmsim::RowPolicy::Closed;
+    hbmsim::HbmSystem system(config);
+    assert(system.submit({1, hbmsim::HbmOp::Read, 0, 32, 0, 0}).accepted());
+    assert(system.submit({2, hbmsim::HbmOp::Read, 0, 32, 100'000, 0}).accepted());
+    system.run();
+    assert(system.stats().row_closed == 2);
+    assert(system.stats().row_hits == 0);
+    assert(system.stats().act_commands == 2);
+    assert(system.stats().pre_commands == 0);
+    assert(system.stats().channels[0].command_bus.busy_time > 0);
+    assert(system.stats().channels[0].pseudo_channels[0].busy_time == 4'000);
+    assert(system.stats().channels[0].banks[0].issued_commands == 4);
+  }
+
+  // V0.5: HBM3's declared RFM command support is enforced consistently by
+  // configuration validation and controller issue checks.
+  {
+    auto config = hbmsim::HbmConfig::hbm3_6400();
+    config.enable_rfm = true;
+    config.rfm_activation_threshold = 4;
+    config.validate();
   }
 }

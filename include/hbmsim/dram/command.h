@@ -3,7 +3,19 @@
 namespace hbmsim {
 
 enum class HbmCommand {
-  Act, Pre, Read, Write, RefreshAllBank, RefreshPerBank, RfmAllBank, RfmPerBank,
+  Act,
+  PreBank,
+  PreAll,
+  Read,
+  Write,
+  ReadAuto,
+  WriteAuto,
+  RefreshAllBank,
+  RefreshPerBank,
+  RfmAllBank,
+  RfmPerBank,
+  Count,
+  Pre = PreBank,
 };
 
 }  // namespace hbmsim

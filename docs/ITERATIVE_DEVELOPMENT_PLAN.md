@@ -40,6 +40,17 @@ It can later satisfy a shared HBFSim `IMemoryTarget` contract, but no common HBM
 | v0.5 | HBM2/HBM3 standards and complete timing | Replace the loose standard enum/configuration with canonical HBM organization, command and cycle timing profiles. Add HBM-specific `RCDRD/RCDWR`, `CCDS/CCDL`, `RRDS/RRDL`, `WTRS/WTRL`, `RTP` and `WR` constraints, then validate profile adapters against pinned references. |
 | v0.6 | Resource/queue/stats and H6 re-validation | Finish controller resource ownership, queue/statistics reporting and the extended normalized trace suite. Re-run HBMSim, Ramulator 2.1 and DRAMSys on the latest head, including pseudo-channel parallelism and refresh collisions, before freezing a new baseline. |
 
+### v0.4.1–v0.6.3 completion record
+
+| Slice | Status | Implemented result |
+| --- | --- | --- |
+| v0.4.1 | Complete | One `HbmController` per channel owns queues, banks, timing history, refresh/RFM state and command/data resources. `HbmSystem` owns only the global event queue, splitter, atomic reservations and parent completion. |
+| v0.5.1 | Complete | `Hbm2Standard`/`Hbm3Standard` are the canonical organization, speed-bin, mapping, command and transition sources; cycle values resolve once to picoseconds. |
+| v0.5.2 | Complete | `PREpb/PREab`, `RDA/WRA`, `REFab/REFpb`, `RFMab/RFMpb`, command prerequisites, state transitions, SID scope and command duration are represented explicitly. |
+| v0.6.1 | Complete | Exact rational bandwidth, finite read/write capacities with atomic backpressure, command/array/data accounting and starvation thresholds are implemented. |
+| v0.6.2 | Complete | Queue, command, array, data-bus and refresh wait totals plus bank/pseudo-channel/channel busy statistics are emitted by the CLI. |
+| v0.6.3 | Complete | CI freezes HBMSim HBM2 v0.3 values, reruns the HBM2 three-simulator gate, and adds an HBM3 HBMSim/Ramulator gate. DRAMSys HBM3 is explicitly unsupported. |
+
 The versions are intentionally sequential: v0.4 is behavior-preserving only; v0.5 changes standard semantics only after v0.4's golden gate; v0.6 is the reference-validation gate. HBF, compute and AI workload work remain downstream of all three.
 
 | Increment | Primary outcome | Scope | Exit criteria |

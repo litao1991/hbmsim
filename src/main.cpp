@@ -129,18 +129,47 @@ int main(int argc, char** argv) {
             << "pre_commands," << stats.pre_commands << '\n'
             << "read_commands," << stats.read_commands << '\n'
             << "write_commands," << stats.write_commands << '\n'
+            << "rejected_transactions," << stats.rejected_transactions << '\n'
             << "rfm_events," << stats.rfm_events << '\n';
   for (std::size_t channel = 0; channel < stats.channels.size(); ++channel) {
     std::cout << "channel_" << channel << "_bytes,"
               << stats.channels[channel].completed_bytes << '\n'
               << "channel_" << channel << "_data_bus_busy_ps,"
               << stats.channels[channel].data_bus_busy_time << '\n'
+              << "channel_" << channel << "_command_bus_busy_ps,"
+              << stats.channels[channel].command_bus.busy_time << '\n'
+              << "channel_" << channel << "_max_read_queue,"
+              << stats.channels[channel].queue.max_read_depth << '\n'
+              << "channel_" << channel << "_max_write_queue,"
+              << stats.channels[channel].queue.max_write_depth << '\n'
+              << "channel_" << channel << "_queue_wait_ps,"
+              << stats.channels[channel].queue.queue_wait_time << '\n'
+              << "channel_" << channel << "_command_wait_ps,"
+              << stats.channels[channel].queue.command_wait_time << '\n'
+              << "channel_" << channel << "_array_wait_ps,"
+              << stats.channels[channel].queue.array_wait_time << '\n'
+              << "channel_" << channel << "_data_bus_wait_ps,"
+              << stats.channels[channel].queue.data_bus_wait_time << '\n'
+              << "channel_" << channel << "_refresh_stall_ps,"
+              << stats.channels[channel].queue.refresh_stall_time << '\n'
+              << "channel_" << channel << "_starvation_events,"
+              << stats.channels[channel].queue.starvation_events << '\n'
               << "channel_" << channel << "_refreshes,"
               << stats.channels[channel].refreshes << '\n'
               << "channel_" << channel << "_per_bank_refreshes,"
               << stats.channels[channel].per_bank_refreshes << '\n'
               << "channel_" << channel << "_rfm_events,"
               << stats.channels[channel].rfm_events << '\n';
+    for (std::size_t pc = 0;
+         pc < stats.channels[channel].pseudo_channels.size(); ++pc) {
+      std::cout << "channel_" << channel << "_pc_" << pc << "_busy_ps,"
+                << stats.channels[channel].pseudo_channels[pc].busy_time << '\n';
+    }
+    for (std::size_t bank = 0; bank < stats.channels[channel].banks.size();
+         ++bank) {
+      std::cout << "channel_" << channel << "_bank_" << bank << "_busy_ps,"
+                << stats.channels[channel].banks[bank].busy_time << '\n';
+    }
   }
   return 0;
 }

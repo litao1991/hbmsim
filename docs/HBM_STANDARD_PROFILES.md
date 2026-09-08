@@ -7,6 +7,6 @@ The simulator resolves a named HBM profile into one indivisible bundle: organiza
 | `hbm2_2000` | `HBM2_2Gb` + `HBM2_2000Mbps` | 2 pseudo-channels, 4 bank groups, 4 banks/group, 16K rows/bank | `python/ramulator/dram/hbm2.py` |
 | `hbm3_6400` | `HBM3_16Gb_4hi` + `HBM3_6400Mbps` | 2 pseudo-channels, 4 bank groups, 4 banks/group, 16K rows/bank | `python/ramulator/dram/hbm3.py` |
 
-Both tables are derived from the pinned Ramulator 2.1 revision recorded in `REFERENCE_BASELINES.md`. Values remain in picoseconds. Detailed constraints cover `tRCDRD`, `tRCDWR`, `tCCDS/L`, `tRRDS/L`, `tWTRS/L`, `tWR`, and `tRTP`; HBM3 also supplies `tPPD`.
+Both tables are derived from the pinned Ramulator 2.1 revision recorded in `REFERENCE_BASELINES.md`. Speed-bin values remain source-shaped in CK cycles and are resolved once onto HBMSim's integer-picosecond timeline. Detailed constraints cover `tRCDRD`, `tRCDWR`, `tCCDS/L/R`, `tRRDS/L`, `tWTRS/L`, `tWR`, `tRTP`, `tRREFD`, and refresh timing; HBM3 also supplies `tPPD` and half-cycle command-bus occupancy.
 
-`hbm3_6400` is a usable simulator profile, but it is not yet a cross-simulator numerical baseline. Its pseudo-channel transport is conservatively represented as 25 B/ns because the current transaction transport uses integral bytes/ns; the exact 25.6 B/ns representation belongs to the v0.6 resource/transport refinement.
+`hbm3_6400` uses the exact transport ratio `32 B / 1250 ps` (25.6 B/ns). It is a permanent HBMSim/Ramulator two-simulator validation profile. The pinned DRAMSys model has no HBM3 standard, so its status is recorded as unsupported rather than filled with synthetic results.

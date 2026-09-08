@@ -1,6 +1,6 @@
 #include "hbmsim/controller/scheduler.h"
 #include "hbmsim/dram/address.h"
-#include "hbmsim/dram/hbm_spec.h"
+#include "hbmsim/dram/hbm_standard.h"
 
 #include <cassert>
 #include <vector>
@@ -10,7 +10,7 @@ int main() {
                                 {hbmsim::AddressLevel::Bank, 2},
                                 {hbmsim::AddressLevel::Row, 17}};
   assert(address.at(hbmsim::AddressLevel::Bank) == 2);
-  assert(hbmsim::HbmDramSpec{}.supports(hbmsim::DramCommand::RfmPerBank));
+  assert(hbmsim::Hbm3Standard{}.supports(hbmsim::DramCommand::RfmPerBank));
 
   const std::vector<hbmsim::SchedulerCandidate> candidates{
       {0, false, hbmsim::DramCommand::Activate, 20, 1, false, false},

@@ -28,7 +28,7 @@ def number(stats: dict, name: str) -> float:
     return sum(float(value) for value in values) if values else 0.0
 
 
-def percentile(values: list[int], percentage: int) -> float:
+def percentile(values: list[float], percentage: int) -> float:
     ordered = sorted(values)
     return float(ordered[max(0, math.ceil(percentage / 100 * len(ordered)) - 1)])
 
@@ -39,18 +39,27 @@ def main() -> None:
                         default=Path("validation/profiles/hbm2_2000.json"))
     args = parser.parse_args()
     profile = json.loads(args.profile.read_text(encoding="utf-8"))
-    if profile.get("profile_id") != "hbm2_2000":
-        raise ValueError("Ramulator runner currently supports hbm2_2000 only")
+    profile_id = profile.get("profile_id")
+    if profile_id not in ("hbm2_2000", "hbm3_6400"):
+        raise ValueError("Ramulator runner supports hbm2_2000 and hbm3_6400")
     import ramulator
 
-    trace_dir = Path("validation/reference-inputs/ramulator2")
+    hbm3 = profile_id == "hbm3_6400"
+    trace_dir = Path("validation/reference-inputs/ramulator2-hbm3" if hbm3 else
+                     "validation/reference-inputs/ramulator2")
+    suffix = "-hbm3" if hbm3 else ""
+    tick_ps = float(profile["request_contract"]["arrival_time_unit_ps"])
     result_dir = Path("validation/results")
     result_dir.mkdir(parents=True, exist_ok=True)
     rows = []
     for trace in sorted(trace_dir.glob("*.trace")):
-        dram = ramulator.dram.HBM2(org_preset="HBM2_2Gb", timing_preset="HBM2_2000Mbps")
-        command_file = result_dir / f"ramulator2-{trace.stem}-commands.csv"
-        controller = ramulator.controller.HBM12(
+        dram = (ramulator.dram.HBM3(org_preset="HBM3_16Gb_4hi",
+                                    timing_preset="HBM3_6400Mbps") if hbm3 else
+                ramulator.dram.HBM2(org_preset="HBM2_2Gb",
+                                    timing_preset="HBM2_2000Mbps"))
+        command_file = result_dir / f"ramulator2{suffix}-{trace.stem}-commands.csv"
+        controller_class = ramulator.controller.HBM34 if hbm3 else ramulator.controller.HBM12
+        controller = controller_class(
             dram=dram, scheduler=ramulator.scheduler.FRFCFSRowHit(),
             refresh_manager=ramulator.refresh_manager.NoRefresh(),
             row_policy=ramulator.row_policy.Open(),
@@ -63,7 +72,7 @@ def main() -> None:
         memory = ramulator.memory_system.GenericDRAM(
             clock_ratio=1, channel_mapper=ramulator.channel_mapper.PassThroughChannelMapper(),
             controllers=[controller])
-        completion_file = result_dir / f"ramulator2-{trace.stem}-completions.csv"
+        completion_file = result_dir / f"ramulator2{suffix}-{trace.stem}-completions.csv"
         frontend = {
             "impl": "ReadWriteTrace", "clock_ratio": 1, "path": str(trace.resolve()),
             "completion_path": str(completion_file.resolve()),
@@ -72,7 +81,7 @@ def main() -> None:
         simulation.run()
         simulation.finalize()
         stats = simulation.stats
-        (result_dir / f"ramulator2-{trace.stem}-stats.json").write_text(
+        (result_dir / f"ramulator2{suffix}-{trace.stem}-stats.json").write_text(
             json.dumps(stats, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         with completion_file.open(newline="", encoding="utf-8") as stream:
             completions = list(csv.DictReader(stream))
@@ -81,9 +90,9 @@ def main() -> None:
         requests = len(trace.read_text(encoding="utf-8").splitlines())
         if len(completions) != requests:
             raise RuntimeError(f"{trace}: completed {len(completions)} of {requests} requests")
-        latencies = [int(row["latency_cycles"]) * 1000 for row in completions]
-        first_arrival = min(int(row["arrival_cycle"]) for row in completions) * 1000
-        last_completion = max(int(row["completion_cycle"]) for row in completions) * 1000
+        latencies = [int(row["latency_cycles"]) * tick_ps for row in completions]
+        first_arrival = min(int(row["arrival_cycle"]) for row in completions) * tick_ps
+        last_completion = max(int(row["completion_cycle"]) for row in completions) * tick_ps
         rows.append({
             "tool": "ramulator2", "trace": trace.stem,
             "profile": profile["profile_id"],
@@ -98,9 +107,9 @@ def main() -> None:
             "row_hits": int(number(stats, "row_hits")),
             "row_misses": int(number(stats, "row_misses")),
             "row_conflicts": int(number(stats, "row_conflicts")),
-            "metric_note": "callback-derived completion time; absolute arrivals preserved at 1 ns",
+            "metric_note": f"callback-derived completion time; absolute arrivals preserved at {tick_ps:g} ps ticks",
         })
-    with (result_dir / "ramulator2-summary.csv").open("w", newline="", encoding="utf-8") as stream:
+    with (result_dir / f"ramulator2{suffix}-summary.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=rows[0].keys())
         writer.writeheader()
         writer.writerows(rows)

@@ -7,12 +7,12 @@ namespace {
 
 class OpenPagePolicy final : public IRowPolicy {
  public:
-  [[nodiscard]] bool close_after_data_command() const override { return false; }
+  [[nodiscard]] bool use_auto_precharge() const override { return false; }
 };
 
 class ClosedPagePolicy final : public IRowPolicy {
  public:
-  [[nodiscard]] bool close_after_data_command() const override { return true; }
+  [[nodiscard]] bool use_auto_precharge() const override { return true; }
 };
 
 }  // namespace

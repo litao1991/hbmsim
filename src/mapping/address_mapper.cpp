@@ -25,7 +25,8 @@ HbmAddress HbmAddressMapper::map(std::uint64_t address) const {
   if (mapping_ == AddressMapping::Hbm2PseudoChannelBrc) {
     // Matches DRAMSys's public `am_hbm2_*_pc_brc.json` bit layout and the
     // corresponding hierarchical HBM2 vector used by Ramulator 2.1.  The
-    // SID bit (10) has no HBMSim hierarchy equivalent yet and is ignored.
+    // The validated one-SID profile fixes bit 10 to zero. Multi-SID profiles
+    // expose it through the explicit SID/stack component below.
     result.pseudo_channel = static_cast<std::uint32_t>((address >> 5) & 0x1);
     result.bank_group = static_cast<std::uint32_t>((address >> 6) & 0x3);
     result.bank = static_cast<std::uint32_t>((address >> 8) & 0x3);
@@ -60,6 +61,7 @@ HbmAddress HbmAddressMapper::map(std::uint64_t address) const {
 
   result.flat_pseudo_channel =
       result.flat_channel * topology_.pseudo_channels_per_channel + result.pseudo_channel;
+  result.flat_sid = result.stack;
   result.flat_bank_group =
       result.flat_pseudo_channel * topology_.bank_groups_per_pseudo_channel + result.bank_group;
 
@@ -90,6 +92,7 @@ HbmAddress HbmAddressMapper::bank_address(std::uint32_t flat_bank) const {
   result.pseudo_channel = result.flat_pseudo_channel % topology_.pseudo_channels_per_channel;
   result.flat_channel = result.flat_pseudo_channel / topology_.pseudo_channels_per_channel;
   result.stack = result.flat_channel / topology_.channels_per_stack;
+  result.flat_sid = result.stack;
   result.channel = result.flat_channel % topology_.channels_per_stack;
   return result;
 }

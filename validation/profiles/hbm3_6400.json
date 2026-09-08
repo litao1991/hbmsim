@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "profile_id": "hbm3_6400",
+  "purpose": "Auditable HBM3 baseline shared by HBMSim and Ramulator 2.1.",
+  "request_contract": {
+    "trace_format": "arrival_ps,op,address,size_bytes",
+    "operations": ["READ", "WRITE"],
+    "arrival_time_unit_ps": 312.5,
+    "request_size_bytes": 32,
+    "address_unit_bytes": 1
+  },
+  "hbm3_organization": {
+    "data_rate_mbps": 6400,
+    "tck_ps": 625,
+    "ramulator_tick_ps": 312.5,
+    "channels": 1,
+    "pseudo_channels_per_channel": 2,
+    "sids": 1,
+    "bank_groups_per_pseudo_channel": 4,
+    "banks_per_bank_group": 4,
+    "rows_per_bank": 16384,
+    "columns_per_row": 32,
+    "address_interleave_bytes": 32,
+    "physical_burst_bytes": 32
+  },
+  "timing_cycles": {
+    "n_bl": 2,
+    "n_cl": 20,
+    "n_rcd_rd": 31,
+    "n_rcd_wr": 15,
+    "n_rp": 26,
+    "n_ras": 45,
+    "n_wr": 33,
+    "n_rtp": 9,
+    "n_cwl": 10,
+    "n_ccd_s": 2,
+    "n_ccd_l": 4,
+    "n_ccd_r": 2,
+    "n_rrd_s": 4,
+    "n_rrd_l": 5,
+    "n_wtr_s": 7,
+    "n_wtr_l": 10,
+    "n_rtw": 17,
+    "n_faw": 24,
+    "n_ppd": 2,
+    "n_rrefd": 13
+  },
+  "tool_bindings": {
+    "hbmsim": {
+      "cli_profile": "hbm3_6400",
+      "refresh": "disabled",
+      "controller": "FR-FCFS open-row"
+    },
+    "ramulator2": {
+      "dram": "HBM3(org_preset=HBM3_16Gb_4hi,timing_preset=HBM3_6400Mbps)",
+      "controller": "HBM34 with FRFCFSRowHit, Open, NoRefresh",
+      "address_mapper": "PassThroughAddrMapper with HBMSim-linear hierarchical vectors"
+    },
+    "dramsys": {
+      "comparison_status": "unsupported",
+      "reason": "The pinned DRAMSys reference does not provide an HBM3 standard model; HBM3 is intentionally a two-simulator gate."
+    }
+  },
+  "comparison_status": "HBM3 requests, arrivals, payload size, and hierarchical addresses are aligned between HBMSim and Ramulator 2.1. Timing and controller differences remain reported measurements. DRAMSys is unsupported and excluded."
+}

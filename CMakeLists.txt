@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(hbmsim VERSION 0.1.0 LANGUAGES CXX)
+project(hbmsim VERSION 0.6.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,6 +16,7 @@ add_library(hbmsim_core
   src/dram/hbm_standard.cpp
   src/kernel/event_queue.cpp
   src/mapping/address_mapper.cpp
+  src/resource/bandwidth_rate.cpp
   src/timing/timing_engine.cpp
   src/timing/timing_spec.cpp
 )
@@ -42,4 +43,8 @@ if(BUILD_TESTING)
   add_executable(test_scheduler tests/test_scheduler.cpp)
   target_link_libraries(test_scheduler PRIVATE hbmsim_core)
   add_test(NAME scheduler COMMAND test_scheduler)
+
+  add_executable(test_hbm_standard tests/test_hbm_standard.cpp)
+  target_link_libraries(test_hbm_standard PRIVATE hbmsim_core)
+  add_test(NAME hbm_standard COMMAND test_hbm_standard)
 endif()

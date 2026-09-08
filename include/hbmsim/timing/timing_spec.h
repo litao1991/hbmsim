@@ -8,7 +8,7 @@
 
 namespace hbmsim {
 
-enum class TimingScope { Bank, BankGroup, PseudoChannel, Channel };
+enum class TimingScope { Bank, BankGroup, Sid, PseudoChannel, Channel };
 
 struct TimingConstraint {
   HbmCommand preceding;
@@ -19,6 +19,7 @@ struct TimingConstraint {
 };
 
 struct HbmTimingSpec {
+  SimTime t_command = 0;
   // Legacy compact profile.  Retained so existing callers keep their exact
   // behaviour until they opt into a canonical HBM standard profile.
   SimTime t_rcd = 14'000;
@@ -44,6 +45,7 @@ struct HbmTimingSpec {
   SimTime t_rcd_wr = 0;
   SimTime t_ccd_s = 0;
   SimTime t_ccd_l = 0;
+  SimTime t_ccd_r = 0;
   SimTime t_rrd_s = 0;
   SimTime t_rrd_l = 0;
   SimTime t_wtr_s = 0;
@@ -53,6 +55,8 @@ struct HbmTimingSpec {
   SimTime t_cwl = 0;
   SimTime t_bl = 0;
   SimTime t_ppd = 0;
+  SimTime t_rrefd = 0;
+  SimTime t_refi = 0;
 
   [[nodiscard]] std::vector<TimingConstraint> constraints() const;
   [[nodiscard]] static HbmTimingSpec hbm4_8000();

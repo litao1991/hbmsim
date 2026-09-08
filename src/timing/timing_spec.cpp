@@ -22,15 +22,28 @@ std::vector<TimingConstraint> HbmTimingSpec::constraints() const {
         {HbmCommand::Write, HbmCommand::Write, TimingScope::BankGroup, 1, t_ccd_l},
         {HbmCommand::Write, HbmCommand::Read, TimingScope::BankGroup, 1,
          t_cwl + t_bl + t_wtr_l},
+        {HbmCommand::Read, HbmCommand::Read, TimingScope::Sid, 1, t_ccd_s},
+        {HbmCommand::Write, HbmCommand::Write, TimingScope::Sid, 1, t_ccd_s},
         {HbmCommand::Act, HbmCommand::Act, TimingScope::BankGroup, 1, t_rrd_l},
         {HbmCommand::Act, HbmCommand::Act, TimingScope::PseudoChannel, 1, t_rrd_s},
         {HbmCommand::Act, HbmCommand::Act, TimingScope::PseudoChannel, 4, t_faw},
         {HbmCommand::Pre, HbmCommand::Pre, TimingScope::PseudoChannel, 1, t_ppd},
         {HbmCommand::RefreshAllBank, HbmCommand::Act, TimingScope::Channel, 1, t_rfc},
         {HbmCommand::RefreshPerBank, HbmCommand::Act, TimingScope::Bank, 1, t_rfcpb},
+        {HbmCommand::RefreshPerBank, HbmCommand::Act,
+         TimingScope::PseudoChannel, 1, t_rrefd},
+        {HbmCommand::RefreshPerBank, HbmCommand::RefreshPerBank,
+         TimingScope::PseudoChannel, 1, t_rrefd},
         {HbmCommand::RfmAllBank, HbmCommand::Act, TimingScope::Channel, 1, t_rfmab},
         {HbmCommand::RfmPerBank, HbmCommand::Act, TimingScope::Bank, 1, t_rfmpb},
         {HbmCommand::Act, HbmCommand::RefreshPerBank, TimingScope::Bank, 1, t_rc},
+        {HbmCommand::Pre, HbmCommand::RefreshPerBank, TimingScope::Bank, 1, t_rp},
+        {HbmCommand::Act, HbmCommand::RefreshAllBank,
+         TimingScope::PseudoChannel, 1, t_rc},
+        {HbmCommand::Pre, HbmCommand::RefreshAllBank,
+         TimingScope::PseudoChannel, 1, t_rp},
+        {HbmCommand::RefreshPerBank, HbmCommand::RefreshAllBank,
+         TimingScope::PseudoChannel, 1, t_rfcpb},
         {HbmCommand::Act, HbmCommand::RfmPerBank, TimingScope::Bank, 1, t_rc},
     };
   }
@@ -58,6 +71,7 @@ std::vector<TimingConstraint> HbmTimingSpec::constraints() const {
 
 HbmTimingSpec HbmTimingSpec::hbm4_8000() {
   HbmTimingSpec spec;
+  spec.t_command = 500;
   spec.t_rcd = 39 * 500;
   spec.t_rp = 33 * 500;
   spec.t_cl = 20 * 500;

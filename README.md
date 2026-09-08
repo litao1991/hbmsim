@@ -25,7 +25,7 @@ third_party/reference/        pinned, read-only upstream study sources
 
 ## Status
 
-H0–H5 are implemented: the project builds as a standalone C++20 library and trace tool, exposes transaction submission/completion, uses picosecond time, maps every access through Stack/Channel/PseudoChannel/BankGroup/Bank/Row, and uses controller-wakeup events rather than clock ticks. It includes ACT/PRE/RD/WR planning, declarative timing constraints, FR-FCFS scheduling, Open/Closed row policy, write drain, refresh, and optional topology-safe simulation-access aggregation.
+H0–H6 and the v0.4–v0.6 architecture convergence are implemented. Each physical channel owns an independent `HbmController` with finite read/write queues, bank and refresh state, command/array/data resources, and diagnostics. `HbmSystem` retains only transaction splitting, global events, admission/backpressure, and parent completion. All scheduler choices use `IScheduler`; row, refresh, and mapping decisions use their policy interfaces.
 
 ```sh
 cmake -S . -B build
@@ -34,4 +34,4 @@ ctest --test-dir build --output-on-failure
 ./build/hbmsim traces/h0_smoke.csv
 ```
 
-H6 adds all-bank/per-bank refresh and the HBM4 `RFMpb` baseline. V0.1–V0.3 are complete, including the frozen three-simulator baseline. V0.4 now separates controller selection, scheduler, row policy, refresh policy, and address mapping while preserving the event-driven transaction interface. V0.5 provides resolved `hbm2_2000` and `hbm3_6400` standard profiles and the detailed HBM timing vocabulary. The exact source alignment and current reference-build status are documented in [docs/H6_REFERENCE_VALIDATION.md](docs/H6_REFERENCE_VALIDATION.md).
+The canonical `Hbm2Standard` and `Hbm3Standard` objects provide organization, cycle-derived timing, commands, prerequisites, transitions, and mapping. Command coverage includes bank/all-bank precharge, auto-precharge, all/per-bank refresh, and HBM3/HBM4 RFM. Transport uses exact rational rates rather than rounded bytes/ns. GitHub Actions permanently gates HBM2 numerical drift and request completion across HBMSim/Ramulator/DRAMSys, plus HBM3 completion across HBMSim/Ramulator; the pinned DRAMSys version is explicitly marked unsupported for HBM3. See [docs/H6_REFERENCE_VALIDATION.md](docs/H6_REFERENCE_VALIDATION.md).

@@ -18,6 +18,7 @@ struct HbmAddress {
   std::uint32_t row = 0;
   std::uint32_t column = 0;
   std::uint32_t flat_channel = 0;
+  std::uint32_t flat_sid = 0;
   std::uint32_t flat_pseudo_channel = 0;
   std::uint32_t flat_bank_group = 0;
   std::uint32_t flat_bank = 0;
@@ -28,6 +29,7 @@ struct HbmAddress {
     return {{AddressLevel::Stack, stack},
             {AddressLevel::Channel, channel},
             {AddressLevel::PseudoChannel, pseudo_channel},
+            {AddressLevel::Sid, stack},
             {AddressLevel::BankGroup, bank_group},
             {AddressLevel::Bank, bank},
             {AddressLevel::Row, row},

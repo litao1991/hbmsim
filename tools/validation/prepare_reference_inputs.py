@@ -93,15 +93,16 @@ def write_dramsys_memspec(profile: dict, dramsys_root: Path, output: Path) -> No
     timings = memspec["memspec"]["memtimingspec"]
     cycle = organization["tck_ps"]
     for target, source_name in {
-        "RCDRD": "t_rcd", "RCDWR": "t_rcd", "RP": "t_rp", "RAS": "t_ras",
-        "RC": "t_rc", "CCDS": "t_ccd", "RRDS": "t_rrd", "RRDL": "t_rrd",
-        "FAW": "t_faw", "WTRS": "t_wtr", "RTW": "t_rtw", "RFC": "t_rfc",
-        "RFCSB": "t_rfcpb",
+        "RCDRD": "t_rcd_rd", "RCDWR": "t_rcd_wr", "RP": "t_rp", "RAS": "t_ras",
+        "RC": "t_rc", "CCDS": "t_ccd_s", "CCDL": "t_ccd_l", "CCDR": "t_ccd_r",
+        "RRDS": "t_rrd_s", "RRDL": "t_rrd_l", "FAW": "t_faw",
+        "WTRS": "t_wtr_s", "WTRL": "t_wtr_l", "RTW": "t_rtw", "WR": "t_wr",
+        "RTP": "t_rtp", "RFC": "t_rfc", "RFCSB": "t_rfcpb", "RREFD": "t_rrefd",
+        "REFI": "t_refi",
     }.items():
         timings[target] = timing[source_name] // cycle
     timings.update({
-        "CCDL": 4, "CCDR": 2, "RL": 14, "WL": 5, "WR": 16, "RTP": 5,
-        "WTRL": 8, "REFI": 3900, "REFISB": 243, "RREFD": 8, "tCK": cycle * 1e-12,
+        "RL": 14, "WL": 5, "REFISB": 243, "tCK": cycle * 1e-12,
     })
     output.write_text(json.dumps(memspec, indent=2) + "\n", encoding="utf-8")
 

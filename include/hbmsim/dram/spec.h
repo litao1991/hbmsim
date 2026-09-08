@@ -9,7 +9,20 @@ namespace hbmsim {
 
 // The common commands deliberately cover only the portable read path.  A
 // concrete standard may expose additional commands without extending clients.
-enum class DramCommand { Activate, Precharge, Read, Write, RefreshAllBank, RefreshPerBank, RfmAllBank, RfmPerBank };
+enum class DramCommand {
+  Activate,
+  PrechargeBank,
+  PrechargeAll,
+  Read,
+  Write,
+  ReadAuto,
+  WriteAuto,
+  RefreshAllBank,
+  RefreshPerBank,
+  RfmAllBank,
+  RfmPerBank,
+  Precharge = PrechargeBank,
+};
 
 class DramSpec {
  public:

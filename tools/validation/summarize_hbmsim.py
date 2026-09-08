@@ -17,15 +17,16 @@ def percentile(values: list[int], percentage: int) -> float:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("binary", type=Path)
-    parser.add_argument("--profile", choices=("hbm2_2000",), required=True)
+    parser.add_argument("--profile", choices=("hbm2_2000", "hbm3_6400"), required=True)
     args = parser.parse_args()
     binary = args.binary
     trace_dir = Path("validation/traces")
     result_dir = Path("validation/results")
     result_dir.mkdir(parents=True, exist_ok=True)
+    suffix = "" if args.profile == "hbm2_2000" else "-hbm3"
     rows = []
     for trace in sorted(trace_dir.glob("*.csv")):
-        completion_file = result_dir / f"hbmsim-{trace.stem}-completions.csv"
+        completion_file = result_dir / f"hbmsim{suffix}-{trace.stem}-completions.csv"
         process = subprocess.run(
             [str(binary), str(trace), "--profile", args.profile,
              "--completions", str(completion_file)],
@@ -50,7 +51,7 @@ def main() -> None:
             "row_hits": metrics["row_hits"], "row_misses": metrics["row_closed"],
             "row_conflicts": metrics["row_conflicts"],
         })
-    with (result_dir / "hbmsim-summary.csv").open("w", newline="", encoding="utf-8") as stream:
+    with (result_dir / f"hbmsim{suffix}-summary.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=rows[0].keys())
         writer.writeheader()
         writer.writerows(rows)

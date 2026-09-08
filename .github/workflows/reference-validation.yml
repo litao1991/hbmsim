@@ -19,10 +19,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++
       - name: Build HBMSim
         run: cmake -S . -B build -G Ninja && cmake --build build && ctest --test-dir build --output-on-failure
-      - name: Generate HBMSim baseline metrics
+      - name: Generate HBMSim HBM2 and HBM3 metrics
         run: |
           python3 tools/validation/generate_microtraces.py
           python3 tools/validation/summarize_hbmsim.py ./build/hbmsim --profile hbm2_2000
+          python3 tools/validation/assert_numeric_regression.py
+          python3 tools/validation/summarize_hbmsim.py ./build/hbmsim --profile hbm3_6400
       - name: Fetch pinned reference sources
         run: |
           git clone https://github.com/CMU-SAFARI/ramulator2.git reference-ramulator2
@@ -30,7 +32,9 @@ jobs:
           git clone https://github.com/tukl-msd/DRAMSys.git reference-dramsys
           git -C reference-dramsys checkout c8475150551e4348434b56f5111a966bdf0d81f9
       - name: Prepare common reference inputs
-        run: python3 tools/validation/prepare_reference_inputs.py --dramsys-root reference-dramsys
+        run: |
+          python3 tools/validation/prepare_reference_inputs.py --dramsys-root reference-dramsys
+          python3 tools/validation/prepare_hbm3_inputs.py
       - name: Build Ramulator 2.1
         run: |
           python3 tools/validation/patch_ramulator_timed_trace.py reference-ramulator2 --record validation/reference-inputs/ramulator2-timed-trace-adapter.txt
@@ -38,12 +42,16 @@ jobs:
           cmake --build build-ramulator2
       - name: Run Ramulator 2.1 HBM2 traces
         run: PYTHONPATH="$GITHUB_WORKSPACE/reference-ramulator2/python" python3 tools/validation/run_ramulator.py --profile validation/profiles/hbm2_2000.json
+      - name: Run Ramulator 2.1 HBM3 traces
+        run: PYTHONPATH="$GITHUB_WORKSPACE/reference-ramulator2/python" python3 tools/validation/run_ramulator.py --profile validation/profiles/hbm3_6400.json
       - name: Build DRAMSys
         run: cmake -S reference-dramsys -B build-dramsys -G Ninja -DDRAMSYS_BUILD_TRACE_ANALYZER=OFF && cmake --build build-dramsys
       - name: Run DRAMSys HBM2 traces
         run: python3 tools/validation/run_dramsys.py ./build-dramsys/bin/DRAMSys --profile validation/profiles/hbm2_2000.json
       - name: Compose three-simulator comparison
-        run: python3 tools/validation/compose_comparison.py
+        run: |
+          python3 tools/validation/compose_comparison.py --profile hbm2_2000
+          python3 tools/validation/compose_comparison.py --profile hbm3_6400
       - name: Enforce H6 request-completion gate
         run: python3 tools/validation/assert_h6_gate.py
       - name: Publish comparison in Actions summary
@@ -54,6 +62,14 @@ jobs:
           echo '' >> "$GITHUB_STEP_SUMMARY"
           echo '```csv' >> "$GITHUB_STEP_SUMMARY"
           cat validation/results/three-simulator-comparison.csv >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo '## HBM3 HBMSim / Ramulator 2.1 comparison' >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo 'DRAMSys is explicitly unsupported for HBM3 and is not included in this table.' >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo '```csv' >> "$GITHUB_STEP_SUMMARY"
+          cat validation/results/hbm3-two-simulator-comparison.csv >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload validation results
         if: always()

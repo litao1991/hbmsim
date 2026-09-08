@@ -20,7 +20,7 @@ struct RequestToken {
   TransactionId id = 0;
 };
 
-enum class SubmitStatus { Accepted, InvalidArgument, DuplicateId, ArrivalInPast };
+enum class SubmitStatus { Accepted, Backpressure, InvalidArgument, DuplicateId, ArrivalInPast };
 
 enum class HbmAccessClass { RowHit, RowClosed, RowConflict };
 

@@ -2,7 +2,7 @@
 
 ## Scope
 
-The validation target is a common HBM2 micro-trace set run through HBMSim, Ramulator 2.1, and DRAMSys. The published comparison must report throughput, mean/p95 latency, and row hit/closed/conflict counts, and must identify every intentional abstraction mismatch.
+The validation target is one common micro-trace set. HBM2 runs through HBMSim, Ramulator 2.1, and DRAMSys; HBM3 runs through HBMSim and Ramulator 2.1. Both published comparisons report throughput, mean/p50/p95 latency, commands and row locality, and identify intentional abstraction mismatches.
 
 ## V0.2 common HBM2 profile
 
@@ -40,19 +40,12 @@ HBMSim's `HbmTimingSpec::hbm4_8000()` is transcribed from the public Ramulator 2
 
 HBMSim models `REFab`, `REFpb`, and threshold-triggered `RFMpb`. `RFMab`, SID topology, auto-precharge commands, and proprietary RFM policy heuristics are intentionally outside this baseline.
 
-## Local execution record — 2026-09-06
+## v0.6.3 permanent gates
 
-HBMSim built and passed all three local regression executables. The two reference builds were attempted from the pinned source trees, but no performance numbers are claimed because neither reference executable could be produced on this host:
+`validation/baselines/hbmsim-hbm2_2000-v0.3.csv` freezes the five v0.3 HBMSim traces. CI requires exact request/command/row classifications and a tight numerical match for mean/p50/p95 latency and throughput. This detects unintended behavior changes independently of reference-tool variability.
 
-| Reference | Attempt | Result |
-| --- | --- | --- |
-| Ramulator 2.1 Python binding | CMake with the system Python | blocked: macOS Python 3.9 is below upstream's 3.10 minimum |
-| Ramulator 2.1 Python binding | bundled Python 3.12 | blocked: runtime lacks `Development.Module` headers required by upstream CMake |
-| Ramulator 2.1 pure C++ library | bindings disabled | blocked: AppleClang 21 rejects the pinned fmt 10.2 consteval implementation and upstream `param.h` requires a dependent-template fix |
-| DRAMSys | CLI build, trace analyzer disabled | blocked: bundled DRAMPower serializes `vector<bool>` through an invalid cast under current libc++ |
-
-These are environment/toolchain failures, not validation results. No latency or bandwidth error is inferred from them.
+`validation/profiles/hbm3_6400.json` aligns one 32 B request, absolute arrival time and hierarchical address between HBMSim and Ramulator. Ramulator models one tick as half an HBM3 CK (312.5 ps). Every input request must complete in both tools before `hbm3-two-simulator-comparison.csv` is accepted. The pinned DRAMSys release does not expose an HBM3 standard and is therefore explicitly excluded.
 
 ## Reproducible Ubuntu validation gate
 
-`.github/workflows/reference-validation.yml` runs on Ubuntu, checks out the recorded upstream revisions, builds HBMSim plus both references, and preserves their logs. It is the required gate before adding a numerical comparison table. The next implementation step is a normalizer that feeds the same HBM2 request stream to each tool and writes `results/reference-comparison.csv`; it must not fabricate missing DRAMSys HBM3/HBM4 capability.
+`.github/workflows/reference-validation.yml` runs on Ubuntu, checks out the recorded upstream revisions, builds HBMSim plus both references, produces the HBM2 three-simulator and HBM3 two-simulator tables, enforces completion and drift gates, and uploads all normalized and raw validation artifacts.

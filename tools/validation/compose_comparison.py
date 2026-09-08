@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import csv
+import argparse
 import json
 from pathlib import Path
 
@@ -12,10 +13,18 @@ RESULTS = Path("validation/results")
 
 
 def main() -> None:
-    metadata = json.loads((Path("validation/reference-inputs") / "metadata.json").read_text(
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--profile", choices=("hbm2_2000", "hbm3_6400"),
+                        default="hbm2_2000")
+    args = parser.parse_args()
+    hbm3 = args.profile == "hbm3_6400"
+    metadata_name = "hbm3-metadata.json" if hbm3 else "metadata.json"
+    metadata = json.loads((Path("validation/reference-inputs") / metadata_name).read_text(
         encoding="utf-8"))
     rows = []
-    for filename in ("hbmsim-summary.csv", "ramulator2-summary.csv", "dramsys-summary.csv"):
+    filenames = (("hbmsim-hbm3-summary.csv", "ramulator2-hbm3-summary.csv") if hbm3 else
+                 ("hbmsim-summary.csv", "ramulator2-summary.csv", "dramsys-summary.csv"))
+    for filename in filenames:
         with (RESULTS / filename).open(newline="", encoding="utf-8") as stream:
             for row in csv.DictReader(stream):
                 row.setdefault("completed_requests", row.get("requests", ""))
@@ -26,7 +35,8 @@ def main() -> None:
     fields = ["tool", "profile", "trace", "requests", "completed_requests", "mean_latency_ps", "p50_latency_ps",
               "p95_latency_ps", "throughput_bytes_per_ns", "act_commands", "pre_commands", "read_commands",
               "write_commands", "row_hits", "row_misses", "row_conflicts", "comparison_scope", "metric_note"]
-    with (RESULTS / "three-simulator-comparison.csv").open("w", newline="", encoding="utf-8") as stream:
+    output = "hbm3-two-simulator-comparison.csv" if hbm3 else "three-simulator-comparison.csv"
+    with (RESULTS / output).open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=fields)
         writer.writeheader()
         writer.writerows(rows)

@@ -6,6 +6,19 @@
 
 namespace hbmsim {
 
+namespace {
+
+HbmCommand timing_command(HbmCommand command) {
+  switch (command) {
+    case HbmCommand::PreAll: return HbmCommand::PreBank;
+    case HbmCommand::ReadAuto: return HbmCommand::Read;
+    case HbmCommand::WriteAuto: return HbmCommand::Write;
+    default: return command;
+  }
+}
+
+}  // namespace
+
 HbmTimingEngine::HbmTimingEngine(HbmTimingSpec spec)
     : constraints_(spec.constraints()) {}
 
@@ -19,6 +32,7 @@ std::uint64_t HbmTimingEngine::resource_key(TimingScope scope,
   switch (scope) {
     case TimingScope::Bank: index = address.flat_bank; break;
     case TimingScope::BankGroup: index = address.flat_bank_group; break;
+    case TimingScope::Sid: index = address.flat_sid; break;
     case TimingScope::PseudoChannel: index = address.flat_pseudo_channel; break;
     case TimingScope::Channel: index = address.flat_channel; break;
   }
@@ -28,6 +42,7 @@ std::uint64_t HbmTimingEngine::resource_key(TimingScope scope,
 SimTime HbmTimingEngine::earliest_issue(HbmCommand command,
                                         const HbmAddress& address,
                                         SimTime now) const {
+  command = timing_command(command);
   SimTime earliest = now;
   for (const auto& constraint : constraints_) {
     if (constraint.following != command) continue;
@@ -46,7 +61,9 @@ SimTime HbmTimingEngine::earliest_issue(HbmCommand command,
 
 void HbmTimingEngine::record(HbmCommand command, const HbmAddress& address,
                              SimTime when) {
+  command = timing_command(command);
   for (const auto scope : {TimingScope::Bank, TimingScope::BankGroup,
+                           TimingScope::Sid,
                            TimingScope::PseudoChannel, TimingScope::Channel}) {
     auto& history = history_[resource_key(scope, address)][command_index(command)];
     history.push_back(when);
