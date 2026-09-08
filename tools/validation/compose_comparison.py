@@ -37,7 +37,11 @@ def main() -> None:
               "write_commands", "row_hits", "row_misses", "row_conflicts", "comparison_scope", "metric_note"]
     output = "hbm3-two-simulator-comparison.csv" if hbm3 else "three-simulator-comparison.csv"
     with (RESULTS / output).open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(stream, fieldnames=fields)
+        # HBMSim also publishes implementation-specific resource and latency
+        # stage columns. Keep the cross-tool table restricted to the declared
+        # common schema while retaining those details in its source summary.
+        writer = csv.DictWriter(stream, fieldnames=fields,
+                                extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
 

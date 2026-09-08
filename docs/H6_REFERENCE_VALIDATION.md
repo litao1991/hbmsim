@@ -20,7 +20,7 @@ Ramulator receives the same fields as a hierarchical vector in the order `Channe
 
 HBMSim now reserves data transfer independently for each pseudo-channel. The common microtraces use a single 32 B HBM2 pseudo-channel payload at every request, so no tool-specific burst coalescing is required. The validation workflow applies [`patch_ramulator_timed_trace.py`](../tools/validation/patch_ramulator_timed_trace.py) to the pinned checkout before building it. The adapter changes only the test frontend: it reads absolute 1 ns arrival cycles, retains the request identity, writes callback-derived completion records and stops only after every request completes. It does not alter Ramulator's HBM2 DRAM model, controller, scheduler or timing rules.
 
-The three summaries now have fields for submitted/completed request counts, mean/p50/p95 latency, throughput, ACT/PRE/RD/WR totals and row hit/miss/conflict. DRAMSys derives the latter from its recorded command phases. DRAMSys still has its own command implementation, so phase-derived metrics remain a comparison result rather than an assumption of cycle identity.
+The three summaries now have fields for submitted/completed request counts, mean/p50/p95 latency, throughput, ACT/PRE/RD/WR totals and row hit/miss/conflict. DRAMSys derives the latter from its recorded command phases. Its pinned stock controller closes rows, unlike the open-row HBMSim/Ramulator binding, so DRAMSys locality is published but excluded from the open-row trend assertion. It remains a comparison result rather than an assumption of cycle identity.
 
 ## HBM4/RFM source alignment
 

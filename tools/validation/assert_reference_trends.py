@@ -23,7 +23,7 @@ def number(row: dict[str, str], field: str) -> float:
     return value
 
 
-def check(path: Path) -> None:
+def check(path: Path, require_open_row: bool) -> None:
     rows = read(path)
     for trace in ("row_hit", "row_conflict", "bank_parallel", "write_only"):
         if trace not in rows:
@@ -32,13 +32,14 @@ def check(path: Path) -> None:
                       "throughput_bytes_per_ns"):
             number(rows[trace], field)
 
-    if number(rows["row_conflict"], "mean_latency_ps") <= number(
-            rows["row_hit"], "mean_latency_ps"):
-        raise SystemExit(f"reference trend gate: {path} conflict is not slower than row hit")
-    if number(rows["row_conflict"], "pre_commands") == 0:
-        raise SystemExit(f"reference trend gate: {path} conflict emitted no precharge")
-    if number(rows["row_hit"], "pre_commands") != 0:
-        raise SystemExit(f"reference trend gate: {path} row-hit emitted a precharge")
+    if require_open_row:
+        if number(rows["row_conflict"], "mean_latency_ps") <= number(
+                rows["row_hit"], "mean_latency_ps"):
+            raise SystemExit(f"reference trend gate: {path} conflict is not slower than row hit")
+        if number(rows["row_conflict"], "pre_commands") == 0:
+            raise SystemExit(f"reference trend gate: {path} conflict emitted no precharge")
+        if number(rows["row_hit"], "pre_commands") != 0:
+            raise SystemExit(f"reference trend gate: {path} row-hit emitted a precharge")
     if number(rows["write_only"], "read_commands") != 0:
         raise SystemExit(f"reference trend gate: {path} write-only emitted reads")
     if number(rows["write_only"], "write_commands") == 0:
@@ -47,14 +48,17 @@ def check(path: Path) -> None:
 
 def main() -> None:
     paths = (
-        RESULTS / "hbmsim-summary.csv",
-        RESULTS / "ramulator2-summary.csv",
-        RESULTS / "dramsys-summary.csv",
-        RESULTS / "hbmsim-hbm3-summary.csv",
-        RESULTS / "ramulator2-hbm3-summary.csv",
+        (RESULTS / "hbmsim-summary.csv", True),
+        (RESULTS / "ramulator2-summary.csv", True),
+        # The pinned DRAMSys controller closes rows under its stock policy;
+        # therefore its row-locality counts are reported but not compared to
+        # the open-row controller trend.
+        (RESULTS / "dramsys-summary.csv", False),
+        (RESULTS / "hbmsim-hbm3-summary.csv", True),
+        (RESULTS / "ramulator2-hbm3-summary.csv", True),
     )
-    for path in paths:
-        check(path)
+    for path, require_open_row in paths:
+        check(path, require_open_row)
     print("reference trend gate passed: HBM2 x3 and HBM3 x2")
 
 
