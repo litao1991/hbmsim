@@ -459,7 +459,10 @@ int main() {
     hbmsim::EventQueue events;
     hbmsim::HbmSystem core(config, events);
     std::size_t notifications = 0;
+    std::vector<hbmsim::HbmCompletion> completed;
     core.set_capacity_callback([&](auto) { ++notifications; });
+    core.set_completion_callback(
+        [&](const auto& completion) { completed.push_back(completion); });
     assert(core.try_submit_now(
                     {1, hbmsim::HbmOp::Read, 0, 64, 0, 0})
                .accepted());
@@ -468,8 +471,11 @@ int main() {
                .status == hbmsim::SubmitStatus::Backpressure);
     while (notifications == 0) assert(events.run_next());
     assert(core.try_submit_now(
-                    {2, hbmsim::HbmOp::Read, 64, 64, events.now(), 0})
+                    {2, hbmsim::HbmOp::Read, 64, 64, 0, 0})
                .accepted());
     events.run();
+    assert(completed.size() == 2);
+    assert(completed.back().latency_breakdown.total() ==
+           completed.back().latency);
   }
 }

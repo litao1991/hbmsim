@@ -157,7 +157,9 @@ void HbmController::cancel_reservation(std::size_t reads,
 
 void HbmController::admit_reserved(HbmAccess access, SimTime now) {
   prepare_refresh_for_arrival(now);
-  access.enqueued_at = now;
+  // Queue wait includes time spent outside a bounded controller queue while
+  // the driver waits for a capacity notification.
+  access.enqueued_at = access.arrival_time;
   if (access.op == HbmOp::Read) {
     if (reserved_reads_ == 0) throw std::logic_error("missing read reservation");
     --reserved_reads_;
