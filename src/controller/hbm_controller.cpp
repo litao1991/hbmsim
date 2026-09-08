@@ -52,6 +52,17 @@ bool has_capacity(std::size_t capacity, std::size_t used,
   return capacity == 0 || (used <= capacity && requested <= capacity - used);
 }
 
+SimTime maintenance_duration(HbmCommand command,
+                             const HbmTimingSpec& timing) {
+  switch (command) {
+    case HbmCommand::RefreshAllBank: return timing.t_rfc;
+    case HbmCommand::RefreshPerBank: return timing.t_rfcpb;
+    case HbmCommand::RfmAllBank: return timing.t_rfmab;
+    case HbmCommand::RfmPerBank: return timing.t_rfmpb;
+    default: return 0;
+  }
+}
+
 }  // namespace
 
 HbmController::HbmController(HbmControllerConfig config,
@@ -180,7 +191,7 @@ std::optional<HbmController::Candidate> HbmController::choose_next(
         access.op, access.address.row, bank,
         config_.standard && row_policy_->use_auto_precharge());
     const bool data = is_data_command(command);
-    const auto ready = timing_engine_.earliest_issue(command, access.address, now);
+    const auto ready = earliest_command(command, access.address, now);
     if (ready <= now && !access.command_eligible) {
       access.command_eligible = true;
       access.command_eligible_since = now;
@@ -212,7 +223,7 @@ std::optional<HbmController::Candidate> HbmController::choose_next(
           access.op, access.address.row, bank,
           config_.standard && row_policy_->use_auto_precharge());
       if (!is_data_command(command)) continue;
-      const auto ready = timing_engine_.earliest_issue(command, access.address, now);
+      const auto ready = earliest_command(command, access.address, now);
       Candidate current{source_is_write, index, command, ready, 2};
       const auto older = !waiting_data.has_value() ||
           access.sequence < (waiting_data->is_write ? write_queue_ : read_queue_)
@@ -232,23 +243,38 @@ std::optional<HbmController::Candidate> HbmController::choose_next(
 
 std::optional<HbmController::MaintenanceCandidate>
 HbmController::choose_maintenance(SimTime now) const {
+  const auto any_open = std::any_of(
+      banks_.begin(), banks_.end(),
+      [](const HbmBankState& bank) { return bank.open_row.has_value(); });
+  if (refresh_pending_) {
+    const auto requested = refresh_manager_->all_bank_command();
+    const auto decision = command_planner_.next(
+        requested, 0, banks_.front(), any_open);
+    const auto address = mapper_.bank_address(config_.first_flat_bank);
+    return MaintenanceCandidate{requested, decision.command, 0,
+                                earliest_command(decision.command, address, now),
+                                decision.final_command};
+  }
   std::optional<MaintenanceCandidate> earliest;
   for (std::uint32_t index = 0; index < banks_.size(); ++index) {
     const auto& bank = banks_[index];
-    HbmCommand command;
+    HbmCommand requested;
     if (bank.rfm_pending) {
-      command = bank.open_row.has_value() ? HbmCommand::PreBank
-                                           : HbmCommand::RfmPerBank;
+      requested = HbmCommand::RfmPerBank;
     } else if (bank.refresh_pending) {
-      command = bank.open_row.has_value() ? HbmCommand::PreBank
-                                           : HbmCommand::RefreshPerBank;
+      requested = HbmCommand::RefreshPerBank;
     }
     else continue;
     const auto address = mapper_.bank_address(config_.first_flat_bank + index);
-    const auto ready = timing_engine_.earliest_issue(command, address, now);
-    MaintenanceCandidate candidate{command, index, ready};
-    if (!earliest.has_value() || ready < earliest->ready_at ||
-        (ready == earliest->ready_at && index < earliest->local_bank)) {
+    const auto decision = command_planner_.next(
+        requested, 0, bank, any_open);
+    MaintenanceCandidate candidate{
+        requested, decision.command, index,
+        earliest_command(decision.command, address, now),
+        decision.final_command};
+    if (!earliest.has_value() || candidate.ready_at < earliest->ready_at ||
+        (candidate.ready_at == earliest->ready_at &&
+         index < earliest->local_bank)) {
       earliest = candidate;
     }
   }
@@ -267,6 +293,56 @@ SimTime HbmController::earliest_all_bank(HbmCommand command,
   return ready;
 }
 
+SimTime HbmController::command_bus_ready(HbmCommand command) const {
+  if (!config_.standard) return unified_command_bus_ready_at_;
+  switch (config_.standard->command_bus(command)) {
+    case CommandBus::Unified: return unified_command_bus_ready_at_;
+    case CommandBus::Row: return row_command_bus_ready_at_;
+    case CommandBus::Column: return column_command_bus_ready_at_;
+  }
+  throw std::logic_error("unknown command bus");
+}
+
+SimTime HbmController::earliest_command(HbmCommand command,
+                                        const HbmAddress& address,
+                                        SimTime now) const {
+  const auto timing_ready = config_.standard &&
+                                    config_.standard->transition_for(command).scope ==
+                                        CommandScope::Channel
+                                ? earliest_all_bank(command, now)
+                                : timing_engine_.earliest_issue(command, address, now);
+  return std::max(timing_ready, command_bus_ready(command));
+}
+
+void HbmController::apply_transition(HbmCommand command,
+                                     std::uint32_t target_row,
+                                     std::size_t bank_index) {
+  if (!config_.standard) {
+    if (command == HbmCommand::PreAll ||
+        command == HbmCommand::RefreshAllBank ||
+        command == HbmCommand::RfmAllBank) {
+      for (auto& bank : banks_) bank.open_row.reset();
+    } else {
+      auto& bank = banks_.at(bank_index);
+      if (command == HbmCommand::Act) bank.open_row = target_row;
+      else if (command == HbmCommand::PreBank ||
+               command == HbmCommand::RefreshPerBank ||
+               command == HbmCommand::RfmPerBank)
+        bank.open_row.reset();
+    }
+    return;
+  }
+  const auto& transition = config_.standard->transition_for(command);
+  if (transition.scope == CommandScope::Channel) {
+    for (auto& bank : banks_) {
+      config_.standard->apply_transition(command, target_row, bank);
+    }
+  } else {
+    config_.standard->apply_transition(command, target_row,
+                                       banks_.at(bank_index));
+  }
+}
+
 void HbmController::record_command(HbmCommand command,
                                    const HbmAddress& address,
                                    std::size_t bank_index, SimTime now) {
@@ -282,7 +358,19 @@ void HbmController::record_command(HbmCommand command,
                             ? config_.standard->command_duration(command)
                             : config_.timing.t_command;
   channel.command_bus.busy_time += duration;
-  command_bus_ready_at_ = now + duration;
+  const auto ready = now + duration;
+  if (!config_.standard ||
+      config_.standard->command_bus(command) == CommandBus::Unified) {
+    unified_command_bus_ready_at_ = ready;
+  } else if (config_.standard->command_bus(command) == CommandBus::Row) {
+    row_command_bus_ready_at_ = ready;
+    channel.row_command_bus.busy_time += duration;
+    ++channel.row_command_bus.issued_commands;
+  } else {
+    column_command_bus_ready_at_ = ready;
+    channel.column_command_bus.busy_time += duration;
+    ++channel.column_command_bus.issued_commands;
+  }
   switch (command) {
     case HbmCommand::Act: ++stats_.act_commands; break;
     case HbmCommand::PreBank:
@@ -305,23 +393,14 @@ std::optional<HbmIssuedAccess> HbmController::issue(Candidate candidate,
   if (!access.first_command_issued) {
     access.first_command_issued = true;
     access.first_command_at = now;
+    access.latency_breakdown.queue_wait = now - access.enqueued_at;
     stats_.channels.at(config_.channel).queue.queue_wait_time +=
-        now - access.enqueued_at;
-  }
-  if (access.command_eligible && now >= access.command_eligible_since) {
-    stats_.channels.at(config_.channel).queue.command_wait_time +=
-        now - access.command_eligible_since;
+        access.latency_breakdown.queue_wait;
   }
   access.command_eligible = false;
   record_command(candidate.command, access.address, bank_index, now);
   if (candidate.command == HbmCommand::Act) {
-    if (config_.standard) {
-      config_.standard->apply_transition(candidate.command,
-                                         access.address.row, bank);
-    } else {
-      bank.open_row = access.address.row;
-      bank.precharge_pending = false;
-    }
+    apply_transition(candidate.command, access.address.row, bank_index);
     ++bank.activation_count;
     if (config_.enable_rfm &&
         bank.activation_count >= config_.rfm_activation_threshold) {
@@ -336,13 +415,7 @@ std::optional<HbmIssuedAccess> HbmController::issue(Candidate candidate,
     if (bank.open_row.has_value() && *bank.open_row != access.address.row) {
       access.access_class = HbmAccessClass::RowConflict;
     }
-    if (config_.standard) {
-      config_.standard->apply_transition(candidate.command,
-                                         access.address.row, bank);
-    } else {
-      bank.open_row.reset();
-      bank.precharge_pending = false;
-    }
+    apply_transition(candidate.command, access.address.row, bank_index);
     return std::nullopt;
   }
   if (!bank.open_row.has_value() || *bank.open_row != access.address.row) {
@@ -351,107 +424,138 @@ std::optional<HbmIssuedAccess> HbmController::issue(Candidate candidate,
   if (!access.activated && access.access_class != HbmAccessClass::RowConflict) {
     access.access_class = HbmAccessClass::RowHit;
   }
-  HbmAccess completed = access;
+  const auto completed_address = access.address;
+  const auto completed_size = access.size_bytes;
+  const auto completed_class = access.access_class;
+  std::vector<HbmAccess> completed;
+  completed.push_back(access);
   queue.erase(queue.begin() + static_cast<std::ptrdiff_t>(candidate.index));
+  if (config_.enable_request_merging) {
+    for (auto iterator = queue.begin(); iterator != queue.end();) {
+      const auto& other = iterator->address;
+      const bool same_location =
+          other.flat_bank == completed_address.flat_bank &&
+          other.row == completed_address.row &&
+          other.column == completed_address.column &&
+          iterator->size_bytes == completed_size;
+      if (!same_location) {
+        ++iterator;
+        continue;
+      }
+      iterator->access_class = completed_class;
+      completed.push_back(*iterator);
+      iterator = queue.erase(iterator);
+      ++stats_.channels.at(config_.channel).queue.merged_accesses;
+    }
+  }
   if (config_.standard) {
-    config_.standard->apply_transition(candidate.command,
-                                       completed.address.row, bank);
+    apply_transition(candidate.command, completed_address.row, bank_index);
   } else if (row_policy_->use_auto_precharge()) {
     bank.precharge_pending = true;
   }
 
   auto& channel = stats_.channels.at(config_.channel);
-  channel.queue.array_wait_time += now - completed.first_command_at;
-  const auto data_ready = now + config_.timing.t_cl;
-  auto& bus_ready = data_bus_ready_at_.at(completed.address.pseudo_channel);
+  const auto cas_latency = candidate.is_write &&
+                                   config_.timing.use_extended_hbm_timing
+                               ? config_.timing.t_cwl
+                               : config_.timing.t_cl;
+  const auto data_ready = now + cas_latency;
+  auto& bus_ready = data_bus_ready_at_.at(completed_address.pseudo_channel);
   const auto data_start = std::max(data_ready, bus_ready);
-  channel.queue.data_bus_wait_time += data_start - data_ready;
-  const auto duration = config_.data_rate.transfer_time(completed.size_bytes);
+  const auto duration = config_.data_rate.transfer_time(completed_size);
   const auto completion = data_start + duration;
   bus_ready = completion;
   channel.data_bus_busy_time += duration;
-  channel.pseudo_channels.at(completed.address.pseudo_channel).busy_time += duration;
-  channel.banks.at(bank_index).busy_time += completion - completed.first_command_at;
-  return HbmIssuedAccess{completed, completion};
+  channel.pseudo_channels.at(completed_address.pseudo_channel).busy_time += duration;
+  for (auto& item : completed) {
+    if (!item.first_command_issued) {
+      item.first_command_issued = true;
+      item.first_command_at = now;
+      item.latency_breakdown.queue_wait = now - item.enqueued_at;
+      channel.queue.queue_wait_time += item.latency_breakdown.queue_wait;
+    }
+    item.latency_breakdown.command_phase = now - item.first_command_at;
+    item.latency_breakdown.data_ready = cas_latency;
+    item.latency_breakdown.data_bus_wait = data_start - data_ready;
+    item.latency_breakdown.data_service = duration;
+    channel.queue.command_wait_time += item.latency_breakdown.command_phase;
+    channel.queue.array_wait_time += item.latency_breakdown.data_ready;
+    channel.queue.data_bus_wait_time += item.latency_breakdown.data_bus_wait;
+    channel.queue.data_service_time += item.latency_breakdown.data_service;
+  }
+  channel.banks.at(bank_index).busy_time +=
+      completion - completed.front().first_command_at;
+  return HbmIssuedAccess{std::move(completed), completion};
 }
 
 void HbmController::issue_maintenance(MaintenanceCandidate candidate,
                                       SimTime now) {
-  auto& bank = banks_.at(candidate.local_bank);
   const auto address =
       mapper_.bank_address(config_.first_flat_bank + candidate.local_bank);
   record_command(candidate.command, address, candidate.local_bank, now);
-  bank.open_row.reset();
-  bank.precharge_pending = false;
-  bank.activation_count = 0;
-  auto& stats = stats_.channels.at(config_.channel);
-  switch (candidate.command) {
-    case HbmCommand::PreBank:
-      if (config_.standard) {
-        config_.standard->apply_transition(candidate.command, 0, bank);
-      } else {
-        bank.open_row.reset();
-        bank.precharge_pending = false;
+  apply_transition(candidate.command, 0, candidate.local_bank);
+  if (!candidate.final_command) return;
+
+  auto& channel = stats_.channels.at(config_.channel);
+  switch (candidate.requested) {
+    case HbmCommand::RefreshAllBank:
+      refresh_pending_ = false;
+      ++channel.refreshes;
+      for (auto& bank : banks_) {
+        bank.refresh_pending = false;
+        bank.activation_count = 0;
       }
       break;
     case HbmCommand::RefreshPerBank:
-      bank.refresh_pending = false;
-      ++stats.per_bank_refreshes;
+      banks_.at(candidate.local_bank).refresh_pending = false;
+      banks_.at(candidate.local_bank).activation_count = 0;
+      ++channel.per_bank_refreshes;
+      break;
+    case HbmCommand::RfmAllBank:
+      refresh_pending_ = false;
+      ++stats_.rfm_events;
+      ++channel.rfm_events;
+      for (auto& bank : banks_) {
+        bank.rfm_pending = false;
+        bank.activation_count = 0;
+      }
       break;
     case HbmCommand::RfmPerBank:
-      bank.rfm_pending = false;
+      banks_.at(candidate.local_bank).rfm_pending = false;
+      banks_.at(candidate.local_bank).activation_count = 0;
       ++stats_.rfm_events;
-      ++stats.rfm_events;
+      ++channel.rfm_events;
       break;
-    default: throw std::logic_error("invalid per-bank maintenance command");
+    default: throw std::logic_error("invalid maintenance final command");
   }
-}
-
-void HbmController::issue_all_bank_refresh(SimTime now) {
-  HbmAddress address;
-  address.flat_channel = config_.channel;
-  record_command(refresh_manager_->all_bank_command(), address, 0, now);
-  ++stats_.channels.at(config_.channel).refreshes;
-  for (auto& bank : banks_) bank = {};
-  refresh_pending_ = false;
-  refresh_busy_until_ = now + refresh_manager_->duration(config_.timing);
+  refresh_busy_until_ = now + maintenance_duration(candidate.requested,
+                                                    config_.timing);
 }
 
 void HbmController::apply_idle_refresh(SimTime when) {
   if (refresh_manager_->uses_all_bank_refresh()) {
-    const auto opened = std::find_if(
-        banks_.begin(), banks_.end(),
-        [](const HbmBankState& bank) { return bank.open_row.has_value(); });
-    if (opened != banks_.end()) {
-      const auto index = static_cast<std::size_t>(opened - banks_.begin());
-      when = earliest_all_bank(HbmCommand::PreAll, when);
-      record_command(HbmCommand::PreAll,
-                     mapper_.bank_address(config_.first_flat_bank + index),
-                     index, when);
-      for (auto& bank : banks_) {
-        if (config_.standard) {
-          config_.standard->apply_transition(HbmCommand::PreAll, 0, bank);
-        } else {
-          bank.open_row.reset();
-          bank.precharge_pending = false;
-        }
-      }
-      when += config_.timing.t_rp;
+    refresh_pending_ = true;
+  } else {
+    banks_.at(next_per_bank_refresh_).refresh_pending = true;
+    next_per_bank_refresh_ = (next_per_bank_refresh_ + 1) % banks_.size();
+  }
+  auto pending = [&] {
+    return refresh_pending_ || std::any_of(
+                                   banks_.begin(), banks_.end(),
+                                   [](const HbmBankState& bank) {
+                                     return bank.refresh_pending;
+                                   });
+  };
+  SimTime cursor = std::max(when, refresh_busy_until_);
+  while (pending()) {
+    const auto candidate = choose_maintenance(cursor);
+    if (!candidate.has_value()) {
+      throw std::logic_error("refresh pending without maintenance candidate");
     }
-    when = earliest_all_bank(refresh_manager_->all_bank_command(), when);
-    issue_all_bank_refresh(when);
-    return;
+    cursor = std::max(cursor, candidate->ready_at);
+    issue_maintenance(*candidate, cursor);
+    cursor = std::max(cursor, command_bus_ready(candidate->command));
   }
-  const auto bank = next_per_bank_refresh_;
-  next_per_bank_refresh_ = (next_per_bank_refresh_ + 1) % banks_.size();
-  const auto address = mapper_.bank_address(config_.first_flat_bank + bank);
-  if (banks_[bank].open_row.has_value()) {
-    when = timing_engine_.earliest_issue(HbmCommand::PreBank, address, when);
-    issue_maintenance({HbmCommand::PreBank, bank, when}, when);
-  }
-  when = timing_engine_.earliest_issue(refresh_manager_->per_bank_command(),
-                                       address, when);
-  issue_maintenance({refresh_manager_->per_bank_command(), bank, when}, when);
 }
 
 void HbmController::prepare_refresh_for_arrival(SimTime now) {
@@ -485,52 +589,26 @@ void HbmController::handle_refresh_event(SimTime now) {
 HbmControllerStep HbmController::drive(SimTime now) {
   update_starvation(now);
   if (now < refresh_busy_until_) {
-    stats_.channels.at(config_.channel).queue.refresh_stall_time +=
-        refresh_busy_until_ - now;
-    return {refresh_busy_until_, std::nullopt};
-  }
-  if (now < command_bus_ready_at_) return {command_bus_ready_at_, std::nullopt};
-  if (refresh_pending_) {
-    const auto opened = std::find_if(
-        banks_.begin(), banks_.end(),
-        [](const HbmBankState& bank) { return bank.open_row.has_value(); });
-    if (opened != banks_.end()) {
-      const auto index = static_cast<std::size_t>(opened - banks_.begin());
-      const auto address =
-          mapper_.bank_address(config_.first_flat_bank + index);
-      const auto ready = earliest_all_bank(HbmCommand::PreAll, now);
-      if (ready > now) return {ready, std::nullopt};
-      record_command(HbmCommand::PreAll, address, index, now);
-      for (auto& bank : banks_) {
-        if (config_.standard) {
-          config_.standard->apply_transition(HbmCommand::PreAll, 0, bank);
-        } else {
-          bank.open_row.reset();
-          bank.precharge_pending = false;
-        }
-      }
-      all_bank_refresh_ready_at_ = now + config_.timing.t_rp;
-      return {command_bus_ready_at_, std::nullopt};
+    const auto unaccounted_from = std::max(now, refresh_stall_accounted_until_);
+    if (refresh_busy_until_ > unaccounted_from) {
+      stats_.channels.at(config_.channel).queue.refresh_stall_time +=
+          refresh_busy_until_ - unaccounted_from;
+      refresh_stall_accounted_until_ = refresh_busy_until_;
     }
-    if (now < all_bank_refresh_ready_at_) {
-      return {all_bank_refresh_ready_at_, std::nullopt};
-    }
-    const auto ready = earliest_all_bank(refresh_manager_->all_bank_command(), now);
-    if (ready > now) return {ready, std::nullopt};
-    issue_all_bank_refresh(now);
     return {refresh_busy_until_, std::nullopt};
   }
   if (const auto maintenance = choose_maintenance(now); maintenance.has_value()) {
     if (maintenance->ready_at > now) return {maintenance->ready_at, std::nullopt};
     issue_maintenance(*maintenance, now);
-    return {command_bus_ready_at_, std::nullopt};
+    return {maintenance->final_command ? refresh_busy_until_ : now,
+            std::nullopt};
   }
   update_write_drain();
   const auto candidate = choose_next(now);
   if (!candidate.has_value()) return {};
   if (candidate->ready_at > now) return {candidate->ready_at, std::nullopt};
   const auto completed = issue(*candidate, now);
-  return {command_bus_ready_at_, completed};
+  return {now, completed};
 }
 
 void HbmController::complete_access(const HbmAccess& access, SimTime) {

@@ -22,6 +22,8 @@ struct QueueStats {
   SimTime array_wait_time = 0;
   SimTime data_bus_wait_time = 0;
   SimTime refresh_stall_time = 0;
+  SimTime data_service_time = 0;
+  std::uint64_t merged_accesses = 0;
 };
 
 struct ChannelStats {
@@ -31,9 +33,28 @@ struct ChannelStats {
   std::uint64_t per_bank_refreshes = 0;
   std::uint64_t rfm_events = 0;
   ResourceStats command_bus;
+  ResourceStats row_command_bus;
+  ResourceStats column_command_bus;
   QueueStats queue;
   std::vector<ResourceStats> pseudo_channels;
   std::vector<ResourceStats> banks;
+};
+
+// Mutually exclusive per-access latency stages. Their sum is exactly the
+// access completion time minus enqueue time. Refresh interference is already
+// charged to whichever stage was blocked; refresh_stall_time remains a
+// separate controller-level causal diagnostic and is not added here.
+struct HbmLatencyBreakdown {
+  SimTime queue_wait = 0;
+  SimTime command_phase = 0;
+  SimTime data_ready = 0;
+  SimTime data_bus_wait = 0;
+  SimTime data_service = 0;
+
+  [[nodiscard]] SimTime total() const {
+    return queue_wait + command_phase + data_ready + data_bus_wait +
+           data_service;
+  }
 };
 
 struct HbmStats {

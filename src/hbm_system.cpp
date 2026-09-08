@@ -65,6 +65,7 @@ HbmConfig HbmConfig::hbm2_2000() {
   config.address_mapping = organization.address_mapping;
   config.physical_burst_bytes = organization.physical_burst_bytes;
   config.pseudo_channel_rate = organization.pseudo_channel_rate;
+  config.enable_request_merging = true;
   return config;
 }
 
@@ -80,6 +81,7 @@ HbmConfig HbmConfig::hbm3_6400() {
   config.address_mapping = organization.address_mapping;
   config.physical_burst_bytes = organization.physical_burst_bytes;
   config.pseudo_channel_rate = organization.pseudo_channel_rate;
+  config.enable_request_merging = true;
   return config;
 }
 
@@ -127,6 +129,7 @@ HbmSystem::HbmSystem(HbmConfig config)
         config_.write_drain_low_watermark;
     controller_config.read_queue_capacity = config_.read_queue_capacity;
     controller_config.write_queue_capacity = config_.write_queue_capacity;
+    controller_config.enable_request_merging = config_.enable_request_merging;
     controller_config.starvation_threshold = config_.starvation_threshold;
     controller_config.refresh_interval = config_.refresh_interval;
     controller_config.enable_rfm = config_.enable_rfm;
@@ -293,12 +296,14 @@ void HbmSystem::drive_controller(std::uint32_t channel) {
   const auto step = controllers_.at(channel)->drive(now());
   if (step.issued_access.has_value()) {
     const auto issued = *step.issued_access;
-    event_queue_.schedule(
-        issued.completion_time, EventType::TransactionCompletion,
-        [this, access = issued.access, channel,
-         completion_time = issued.completion_time] {
-          finish_access(access, channel, completion_time);
-        });
+    for (const auto& access : issued.accesses) {
+      event_queue_.schedule(
+          issued.completion_time, EventType::TransactionCompletion,
+          [this, access, channel,
+           completion_time = issued.completion_time] {
+            finish_access(access, channel, completion_time);
+          });
+    }
   }
   if (step.wake_at.has_value()) {
     schedule_controller_wake(channel, *step.wake_at);
@@ -319,6 +324,7 @@ void HbmSystem::finish_access(const Access& access, std::uint32_t channel,
     request.completion_time = completion_time;
     request.completion_channel = channel;
     request.last_access_class = access.access_class;
+    request.last_latency_breakdown = access.latency_breakdown;
   }
   if (request.remaining_accesses == 0) complete_parent(access.parent_id);
 }
@@ -337,7 +343,12 @@ void HbmSystem::complete_parent(TransactionId id) {
                            request.transaction.arrival_time,
                            request.completion_time,
                            request.completion_time -
-                               request.transaction.arrival_time};
+                               request.transaction.arrival_time,
+                           {}};
+  // Parent latency follows its critical (last-completing) modeled access.
+  // Every child is enqueued at the parent's arrival time, so that access's
+  // exclusive stage partition also exactly partitions the parent latency.
+  completion.latency_breakdown = request.last_latency_breakdown;
   ++stats_.completed_transactions;
   if (completion.op == HbmOp::Read) stats_.read_bytes += completion.size_bytes;
   else stats_.write_bytes += completion.size_bytes;

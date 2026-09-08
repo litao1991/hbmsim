@@ -5,6 +5,7 @@
 !/validation/profiles/hbm2_2000.json
 !/validation/baselines/
 !/validation/baselines/hbmsim-hbm2_2000-v0.3.csv
+!/validation/baselines/hbmsim-hbm2_2000-v0.6.4.csv
 /out/
 /.cache/
 *.swp

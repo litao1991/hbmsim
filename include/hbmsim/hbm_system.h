@@ -36,6 +36,7 @@ struct HbmConfig {
   std::size_t write_drain_low_watermark = 4;
   std::size_t read_queue_capacity = 0;
   std::size_t write_queue_capacity = 0;
+  bool enable_request_merging = false;
   SimTime starvation_threshold = 0;
   SimTime refresh_interval = 0;
   bool enable_rfm = false;
@@ -77,6 +78,7 @@ class HbmSystem {
     SimTime completion_time = 0;
     std::uint32_t completion_channel = 0;
     HbmAccessClass last_access_class = HbmAccessClass::RowClosed;
+    HbmLatencyBreakdown last_latency_breakdown{};
   };
 
   [[nodiscard]] std::vector<Access> split_transaction(

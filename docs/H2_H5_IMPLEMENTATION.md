@@ -12,7 +12,7 @@ Each Channel owns independent read/write queues. The controller wakes only for a
 
 ## H4 — refresh and extended timing
 
-An optional per-channel all-bank refresh manager schedules `REFab` after a configured interval. It closes every Bank of that Channel, blocks command issue for `tRFC`, and records the refresh in the same timing history. To avoid an impossible refresh storm, `refresh_interval` must be at least `tRFC`. Per-bank refresh and HBM4 RFM remain H6+ work.
+An optional per-channel refresh manager schedules all-bank or rotating per-bank refresh after a configured interval. Standard-owned prerequisite tables first issue `PREab`/`PREpb` when required, then the maintenance command closes the affected Bank scope and blocks it for its refresh duration. HBM3/HBM4 also support threshold-triggered per-bank RFM through the same command path. To avoid an impossible refresh storm, `refresh_interval` must be at least its selected refresh duration.
 
 ## H5 — scalable transactions
 

@@ -41,7 +41,7 @@ def main() -> None:
     output.mkdir(parents=True, exist_ok=True)
     tick_ps = Decimal(str(profile["request_contract"]["arrival_time_unit_ps"]))
     request_size = profile["request_contract"]["request_size_bytes"]
-    for trace in sorted(Path("validation/traces").glob("*.csv")):
+    for trace in sorted(Path("validation/traces/hbm3_6400").glob("*.csv")):
         rows = read_trace(trace)
         with (output / f"{trace.stem}.trace").open("w", encoding="utf-8") as stream:
             for request_id, item in enumerate(rows, start=1):

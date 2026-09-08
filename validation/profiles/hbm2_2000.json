@@ -65,8 +65,8 @@
     "hbmsim": {
       "cli_profile": "hbm2_2000",
       "refresh": "disabled",
-      "controller": "FR-FCFS open-row",
-      "known_difference": "The profile fixes the SID/stack selector to zero because the Ramulator HBM2_2Gb preset has one SID; HBMSim therefore needs no SID hierarchy for this baseline."
+      "controller": "FR-FCFS open-row with separate row/column command buses and optional same-address merging",
+      "known_difference": "The profile fixes the SID/stack selector to zero because the Ramulator HBM2_2Gb preset has one SID; HBMSim therefore needs no SID hierarchy for this baseline. HBMSim remains event-driven and transaction-level."
     },
     "ramulator2": {
       "dram": "HBM2(org_preset=HBM2_2Gb,timing_preset=HBM2_2000Mbps)",
@@ -83,5 +83,5 @@
       "known_difference": "The V0.3 input preparer derives profile-specific memspec and dense mapping JSON from the pinned stock schema. Its STL input elides the fixed-zero SID/stack bit, preserving every dynamic address field; DRAMSys retains its own command/timing implementation."
     }
   },
-  "comparison_status": "V0.3 baseline completed in GitHub Actions run 34081337722: every request is one 32 B HBM2 payload with an absolute 1 ns arrival tick and SID/stack selector zero; DRAMSys receives profile-derived HBM2 organization, timing, and dense address-mapping JSON. Command and row-locality differences remain reported measurements."
+  "comparison_status": "V0.6.4 profile-aware semantic baseline: every request is one 32 B HBM2 payload with an absolute 1 ns arrival tick and SID/stack selector zero; DRAMSys receives profile-derived HBM2 organization, timing, and dense address-mapping JSON. Command and row-locality differences remain reported measurements."
 }

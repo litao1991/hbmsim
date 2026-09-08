@@ -59,7 +59,7 @@ def main() -> None:
     result_dir.mkdir(parents=True, exist_ok=True)
     rows = []
     config_dir = Path("validation/reference-inputs/dramsys")
-    trace_names = sorted(trace.stem for trace in Path("validation/traces").glob("*.csv"))
+    trace_names = sorted(trace.stem for trace in Path("validation/traces/hbm2_2000").glob("*.csv"))
     for trace in trace_names:
         config = config_dir / f"{trace}.json"
         if not config.is_file():

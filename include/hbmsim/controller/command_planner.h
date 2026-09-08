@@ -17,6 +17,10 @@ class HbmCommandPlanner {
   [[nodiscard]] HbmCommand next(HbmOp op, std::uint32_t row,
                                 const HbmBankState& bank,
                                 bool auto_precharge = false) const;
+  [[nodiscard]] CommandDecision next(HbmCommand requested,
+                                     std::uint32_t row,
+                                     const HbmBankState& target_bank,
+                                     bool any_bank_open) const;
 
  private:
   const HbmStandard* standard_ = nullptr;

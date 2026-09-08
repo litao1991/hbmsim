@@ -36,6 +36,7 @@ struct HbmAccess {
   SimTime first_command_at = 0;
   bool command_eligible = false;
   SimTime command_eligible_since = 0;
+  HbmLatencyBreakdown latency_breakdown{};
 };
 
 struct HbmControllerConfig {
@@ -53,6 +54,7 @@ struct HbmControllerConfig {
   std::size_t write_drain_low_watermark = 4;
   std::size_t read_queue_capacity = 0;
   std::size_t write_queue_capacity = 0;
+  bool enable_request_merging = false;
   SimTime starvation_threshold = 0;
   SimTime refresh_interval = 0;
   bool enable_rfm = false;
@@ -60,7 +62,7 @@ struct HbmControllerConfig {
 };
 
 struct HbmIssuedAccess {
-  HbmAccess access;
+  std::vector<HbmAccess> accesses;
   SimTime completion_time = 0;
 };
 
@@ -102,9 +104,11 @@ class HbmController {
     int priority = 0;
   };
   struct MaintenanceCandidate {
+    HbmCommand requested = HbmCommand::RefreshPerBank;
     HbmCommand command = HbmCommand::RefreshPerBank;
     std::uint32_t local_bank = 0;
     SimTime ready_at = 0;
+    bool final_command = true;
   };
 
   [[nodiscard]] std::size_t local_bank(std::uint32_t flat_bank) const;
@@ -113,11 +117,16 @@ class HbmController {
       SimTime now) const;
   [[nodiscard]] SimTime earliest_all_bank(HbmCommand command,
                                           SimTime now) const;
+  [[nodiscard]] SimTime earliest_command(HbmCommand command,
+                                         const HbmAddress& address,
+                                         SimTime now) const;
+  [[nodiscard]] SimTime command_bus_ready(HbmCommand command) const;
+  void apply_transition(HbmCommand command, std::uint32_t target_row,
+                        std::size_t local_bank);
   void update_write_drain();
   void update_starvation(SimTime now);
   void prepare_refresh_for_arrival(SimTime now);
   void apply_idle_refresh(SimTime when);
-  void issue_all_bank_refresh(SimTime now);
   void issue_maintenance(MaintenanceCandidate candidate, SimTime now);
   [[nodiscard]] std::optional<HbmIssuedAccess> issue(Candidate candidate,
                                                      SimTime now);
@@ -136,9 +145,11 @@ class HbmController {
   std::deque<HbmAccess> write_queue_;
   std::vector<HbmBankState> banks_;
   std::vector<SimTime> data_bus_ready_at_;
-  SimTime command_bus_ready_at_ = 0;
+  SimTime unified_command_bus_ready_at_ = 0;
+  SimTime row_command_bus_ready_at_ = 0;
+  SimTime column_command_bus_ready_at_ = 0;
   SimTime refresh_busy_until_ = 0;
-  SimTime all_bank_refresh_ready_at_ = 0;
+  SimTime refresh_stall_accounted_until_ = 0;
   std::optional<SimTime> wakeup_at_;
   std::optional<SimTime> refresh_due_at_;
   std::optional<SimTime> next_refresh_due_;

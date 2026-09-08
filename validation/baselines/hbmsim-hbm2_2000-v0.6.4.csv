@@ -1,0 +1,8 @@
+tool,trace,profile,requests,mean_latency_ps,p50_latency_ps,p95_latency_ps,throughput_bytes_per_ns,act_commands,pre_commands,read_commands,write_commands,row_hits,row_misses,row_conflicts
+hbmsim,bank_parallel,hbm2_2000,32,23000.0,16000.0,30000.0,3.1411042944785277,16,0,32,0,16,16,0
+hbmsim,queue_pressure,hbm2_2000,128,19523.4375,16000.0,30000.0,6.291858678955453,32,0,128,0,96,32,0
+hbmsim,read_write_mix,hbm2_2000,48,24083.333333333332,20000.0,42000.0,3.1093117408906883,1,0,32,16,47,1,0
+hbmsim,row_conflict,hbm2_2000,32,51500.0,48000.0,101000.0,2.7379679144385025,8,7,32,0,24,1,7
+hbmsim,row_hit,hbm2_2000,32,16750.0,16000.0,20000.0,3.1411042944785277,1,0,32,0,31,1,0
+hbmsim,sequential,hbm2_2000,64,17625.0,16000.0,28000.0,3.170278637770898,2,1,64,0,62,1,1
+hbmsim,write_only,hbm2_2000,32,7562.5,7000.0,9000.0,3.230283911671924,1,0,0,32,31,1,0

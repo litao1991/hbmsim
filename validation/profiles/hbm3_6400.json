@@ -49,7 +49,7 @@
     "hbmsim": {
       "cli_profile": "hbm3_6400",
       "refresh": "disabled",
-      "controller": "FR-FCFS open-row"
+      "controller": "FR-FCFS open-row with separate row/column command buses and optional same-address merging"
     },
     "ramulator2": {
       "dram": "HBM3(org_preset=HBM3_16Gb_4hi,timing_preset=HBM3_6400Mbps)",
@@ -61,5 +61,5 @@
       "reason": "The pinned DRAMSys reference does not provide an HBM3 standard model; HBM3 is intentionally a two-simulator gate."
     }
   },
-  "comparison_status": "HBM3 requests, arrivals, payload size, and hierarchical addresses are aligned between HBMSim and Ramulator 2.1. Timing and controller differences remain reported measurements. DRAMSys is unsupported and excluded."
+  "comparison_status": "V0.6.4 HBM3 requests, arrivals, payload size, and semantic hierarchical addresses are aligned between HBMSim and Ramulator 2.1. Timing and controller differences remain reported measurements. DRAMSys is unsupported and excluded."
 }

@@ -9,7 +9,7 @@ The validation target is one common micro-trace set. HBM2 runs through HBMSim, R
 [`validation/profiles/hbm2_2000.json`](../validation/profiles/hbm2_2000.json) is the versioned profile contract. It pins the Ramulator HBM2 2Gb / 2000 Mbps timing basis, the pseudo-channel BRC address-bit layout used by DRAMSys, the neutral request format, and each tool's controller/refresh binding. HBMSim runs it explicitly with:
 
 ```sh
-./build/hbmsim validation/traces/row_hit.csv --profile hbm2_2000
+./build/hbmsim validation/traces/hbm2_2000/row_hit.csv --profile hbm2_2000
 ```
 
 The manifest fixes the SID/stack selector to zero, matching the single-SID Ramulator HBM2_2Gb baseline without introducing a superfluous HBMSim hierarchy. The validation input preparer derives DRAMSys HBM2 memspec and dense address-mapping JSON from that same organization and timing contract instead of using its stock 16Gb/8Hi dimensions. Its STL conversion removes only that constant SID bit, so all dynamic burst, pseudo-channel, bank-group, bank, column, and row fields remain identical. The Actions comparison carries the selected profile through `validation/reference-inputs/metadata.json`.
@@ -40,12 +40,14 @@ HBMSim's `HbmTimingSpec::hbm4_8000()` is transcribed from the public Ramulator 2
 
 HBMSim models `REFab`, `REFpb`, and threshold-triggered `RFMpb`. `RFMab`, SID topology, auto-precharge commands, and proprietary RFM policy heuristics are intentionally outside this baseline.
 
-## v0.6.3 permanent gates
+## v0.6.4 semantic and permanent gates
 
-`validation/baselines/hbmsim-hbm2_2000-v0.3.csv` freezes the five v0.3 HBMSim traces. CI requires exact request/command/row classifications and a tight numerical match for mean/p50/p95 latency and throughput. This detects unintended behavior changes independently of reference-tool variability.
+The trace generator constructs seven workloads from semantic `(PseudoChannel, BankGroup, Bank, Row, Column)` addresses, then applies a profile-specific inverse mapper. HBM2 and HBM3 therefore exercise the same row-hit, row-conflict, bank-parallel, mixed, sequential, write-only, and queue-pressure intent even though their flat-address mappings differ.
+
+`validation/baselines/hbmsim-hbm2_2000-v0.6.4.csv` freezes the new HBM2 results. CI requires exact request/command/row classifications and a tight numerical match for mean/p50/p95 latency and throughput. The semantic gate also proves that every logical completion is represented by exactly one physical data command or a declared same-address merge, and that queue wait + command phase + data-ready + data-bus wait + data service equals end-to-end latency.
 
 `validation/profiles/hbm3_6400.json` aligns one 32 B request, absolute arrival time and hierarchical address between HBMSim and Ramulator. Ramulator models one tick as half an HBM3 CK (312.5 ps). Every input request must complete in both tools before `hbm3-two-simulator-comparison.csv` is accepted. The pinned DRAMSys release does not expose an HBM3 standard and is therefore explicitly excluded.
 
 ## Reproducible Ubuntu validation gate
 
-`.github/workflows/reference-validation.yml` runs on Ubuntu, checks out the recorded upstream revisions, builds HBMSim plus both references, produces the HBM2 three-simulator and HBM3 two-simulator tables, enforces completion and drift gates, and uploads all normalized and raw validation artifacts.
+`.github/workflows/reference-validation.yml` runs on Ubuntu, checks out the recorded upstream revisions, builds HBMSim plus both references, produces the HBM2 three-simulator and HBM3 two-simulator tables, enforces semantic, frozen-number, reference-trend, and completion gates, and uploads all normalized and raw validation artifacts.

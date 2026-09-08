@@ -1,6 +1,7 @@
 #pragma once
 
 #include "hbmsim/common/types.h"
+#include "hbmsim/stats.h"
 
 #include <cstdint>
 #include <string>
@@ -43,6 +44,7 @@ struct HbmCompletion {
   SimTime arrival_time = 0;
   SimTime completion_time = 0;
   SimTime latency = 0;
+  HbmLatencyBreakdown latency_breakdown{};
 };
 
 }  // namespace hbmsim

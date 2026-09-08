@@ -25,7 +25,7 @@ third_party/reference/        pinned, read-only upstream study sources
 
 ## Status
 
-H0–H6 and the v0.4–v0.6 architecture convergence are implemented. Each physical channel owns an independent `HbmController` with finite read/write queues, bank and refresh state, command/array/data resources, and diagnostics. `HbmSystem` retains only transaction splitting, global events, admission/backpressure, and parent completion. All scheduler choices use `IScheduler`; row, refresh, and mapping decisions use their policy interfaces.
+H0–H6 and v0.6.4 are implemented. Each physical channel owns an independent `HbmController` with finite read/write queues, bank and refresh state, separate row/column command buses, data resources, and diagnostics. `HbmSystem` retains only transaction splitting, global events, admission/backpressure, and parent completion. All scheduler choices use `IScheduler`; row, refresh, and mapping decisions use their policy interfaces.
 
 ```sh
 cmake -S . -B build
@@ -34,4 +34,4 @@ ctest --test-dir build --output-on-failure
 ./build/hbmsim traces/h0_smoke.csv
 ```
 
-The canonical `Hbm2Standard` and `Hbm3Standard` objects provide organization, cycle-derived timing, commands, prerequisites, transitions, and mapping. Command coverage includes bank/all-bank precharge, auto-precharge, all/per-bank refresh, and HBM3/HBM4 RFM. Transport uses exact rational rates rather than rounded bytes/ns. GitHub Actions permanently gates HBM2 numerical drift and request completion across HBMSim/Ramulator/DRAMSys, plus HBM3 completion across HBMSim/Ramulator; the pinned DRAMSys version is explicitly marked unsupported for HBM3. See [docs/H6_REFERENCE_VALIDATION.md](docs/H6_REFERENCE_VALIDATION.md).
+The canonical `Hbm2Standard` and `Hbm3Standard` objects provide organization, cycle-derived timing, commands, table-driven prerequisites/transitions, command-bus placement, and mapping. Command coverage includes bank/all-bank precharge, auto-precharge, all/per-bank refresh, and HBM3/HBM4 RFM. Reads use `tCL`, writes use `tCWL`; optional same-address merging preserves every logical completion while consuming one physical data command. Each completion reports mutually exclusive queue, command, data-ready, data-bus-wait, and transfer stages. GitHub Actions permanently gates HBM2 numerical drift and request completion across HBMSim/Ramulator/DRAMSys, plus HBM3 completion across HBMSim/Ramulator; the pinned DRAMSys version is explicitly marked unsupported for HBM3. See [docs/H6_REFERENCE_VALIDATION.md](docs/H6_REFERENCE_VALIDATION.md).

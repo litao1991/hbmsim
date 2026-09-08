@@ -23,8 +23,9 @@ jobs:
         run: |
           python3 tools/validation/generate_microtraces.py
           python3 tools/validation/summarize_hbmsim.py ./build/hbmsim --profile hbm2_2000
-          python3 tools/validation/assert_numeric_regression.py
           python3 tools/validation/summarize_hbmsim.py ./build/hbmsim --profile hbm3_6400
+          python3 tools/validation/assert_semantic_gate.py
+          python3 tools/validation/assert_numeric_regression.py
       - name: Fetch pinned reference sources
         run: |
           git clone https://github.com/CMU-SAFARI/ramulator2.git reference-ramulator2
@@ -53,7 +54,9 @@ jobs:
           python3 tools/validation/compose_comparison.py --profile hbm2_2000
           python3 tools/validation/compose_comparison.py --profile hbm3_6400
       - name: Enforce H6 request-completion gate
-        run: python3 tools/validation/assert_h6_gate.py
+        run: |
+          python3 tools/validation/assert_reference_trends.py
+          python3 tools/validation/assert_h6_gate.py
       - name: Publish comparison in Actions summary
         run: |
           echo '## Three-simulator HBM microtrace comparison' >> "$GITHUB_STEP_SUMMARY"

@@ -12,6 +12,33 @@ int main() {
   assert(hbm2.command_duration(hbmsim::HbmCommand::Act) == 2'000);
   assert(!hbm2.supports(hbmsim::HbmCommand::RfmPerBank));
 
+  hbmsim::HbmBankState prerequisite_bank;
+  auto decision = hbm2.resolve_prerequisite(
+      hbmsim::HbmCommand::RefreshPerBank, 0, prerequisite_bank, false);
+  assert(decision.command == hbmsim::HbmCommand::RefreshPerBank);
+  assert(decision.final_command);
+  prerequisite_bank.open_row = 7;
+  decision = hbm2.resolve_prerequisite(
+      hbmsim::HbmCommand::RefreshPerBank, 0, prerequisite_bank, true);
+  assert(decision.command == hbmsim::HbmCommand::PreBank);
+  assert(!decision.final_command);
+  decision = hbm2.resolve_prerequisite(
+      hbmsim::HbmCommand::RefreshAllBank, 0, prerequisite_bank, true);
+  assert(decision.command == hbmsim::HbmCommand::PreAll);
+  assert(decision.scope == hbmsim::CommandScope::Channel);
+  assert(!decision.final_command);
+  prerequisite_bank.open_row.reset();
+  decision = hbm2.resolve_prerequisite(
+      hbmsim::HbmCommand::RefreshAllBank, 0, prerequisite_bank, false);
+  assert(decision.command == hbmsim::HbmCommand::RefreshAllBank);
+  assert(decision.final_command);
+  assert(hbm2.transition_for(hbmsim::HbmCommand::PreAll).scope ==
+         hbmsim::CommandScope::Channel);
+  assert(hbm2.command_bus(hbmsim::HbmCommand::Act) ==
+         hbmsim::CommandBus::Row);
+  assert(hbm2.command_bus(hbmsim::HbmCommand::Read) ==
+         hbmsim::CommandBus::Column);
+
   const hbmsim::Hbm3Standard hbm3;
   assert(hbm3.profile_id() == "hbm3_6400");
   assert(hbm3.timing().t_rcd_rd == 19'375);

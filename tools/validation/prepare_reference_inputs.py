@@ -116,7 +116,7 @@ def main() -> None:
     profile = json.loads(args.profile.read_text(encoding="utf-8"))
     if profile.get("profile_id") != "hbm2_2000":
         raise ValueError("reference input preparation currently supports hbm2_2000 only")
-    trace_dir = Path("validation/traces")
+    trace_dir = Path("validation/traces/hbm2_2000")
     ramulator_dir = Path("validation/reference-inputs/ramulator2")
     dramsys_dir = Path("validation/reference-inputs/dramsys")
     ramulator_dir.mkdir(parents=True, exist_ok=True)
@@ -142,7 +142,7 @@ def main() -> None:
                 stream.write(f"{arrival_ps // arrival_unit} {op} {request_id} "
                              f"{hbm2_vector(int(item['address'], 0))}\n")
         with (dramsys_dir / f"{trace.stem}.stl").open("w", encoding="utf-8") as stream:
-            stream.write("# Generated from validation/traces; timestamps are 1 ns cycles.\n")
+            stream.write("# Generated from semantic HBM2 traces; timestamps are 1 ns cycles.\n")
             for item in rows:
                 cycle = int(item["arrival_ps"]) // 1_000
                 op = "read" if item["op"] == "READ" else "write"

@@ -102,7 +102,8 @@ int main(int argc, char** argv) {
       std::cerr << "cannot write completions: " << argv[3] << '\n';
       return 2;
     }
-    completions << "id,op,address,size_bytes,channel,arrival_ps,completion_ps,latency_ps,access_class\n";
+    completions << "id,op,address,size_bytes,channel,arrival_ps,completion_ps,latency_ps,access_class,"
+                   "queue_wait_ps,command_phase_ps,data_ready_ps,data_bus_wait_ps,data_service_ps\n";
     for (const auto& completion : system.completions()) {
       const char* op = completion.op == hbmsim::HbmOp::Read ? "READ" : "WRITE";
       const char* access_class = completion.access_class == hbmsim::HbmAccessClass::RowHit
@@ -113,7 +114,12 @@ int main(int argc, char** argv) {
       completions << completion.id << ',' << op << ',' << completion.address << ','
                   << completion.size_bytes << ',' << completion.channel << ','
                   << completion.arrival_time << ',' << completion.completion_time << ','
-                  << completion.latency << ',' << access_class << '\n';
+                  << completion.latency << ',' << access_class << ','
+                  << completion.latency_breakdown.queue_wait << ','
+                  << completion.latency_breakdown.command_phase << ','
+                  << completion.latency_breakdown.data_ready << ','
+                  << completion.latency_breakdown.data_bus_wait << ','
+                  << completion.latency_breakdown.data_service << '\n';
     }
   }
   const auto& stats = system.stats();
@@ -138,6 +144,10 @@ int main(int argc, char** argv) {
               << stats.channels[channel].data_bus_busy_time << '\n'
               << "channel_" << channel << "_command_bus_busy_ps,"
               << stats.channels[channel].command_bus.busy_time << '\n'
+              << "channel_" << channel << "_row_command_bus_busy_ps,"
+              << stats.channels[channel].row_command_bus.busy_time << '\n'
+              << "channel_" << channel << "_column_command_bus_busy_ps,"
+              << stats.channels[channel].column_command_bus.busy_time << '\n'
               << "channel_" << channel << "_max_read_queue,"
               << stats.channels[channel].queue.max_read_depth << '\n'
               << "channel_" << channel << "_max_write_queue,"
@@ -150,6 +160,10 @@ int main(int argc, char** argv) {
               << stats.channels[channel].queue.array_wait_time << '\n'
               << "channel_" << channel << "_data_bus_wait_ps,"
               << stats.channels[channel].queue.data_bus_wait_time << '\n'
+              << "channel_" << channel << "_data_service_ps,"
+              << stats.channels[channel].queue.data_service_time << '\n'
+              << "channel_" << channel << "_merged_accesses,"
+              << stats.channels[channel].queue.merged_accesses << '\n'
               << "channel_" << channel << "_refresh_stall_ps,"
               << stats.channels[channel].queue.refresh_stall_time << '\n'
               << "channel_" << channel << "_starvation_events,"

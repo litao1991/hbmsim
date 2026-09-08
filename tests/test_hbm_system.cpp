@@ -186,6 +186,8 @@ int main() {
     assert(system.stats().read_bytes == 16 * 1024);
     assert(system.stats().channels[0].completed_bytes == 16 * 1024);
     assert(system.stats().channels[0].data_bus_busy_time == 164);
+    assert(system.completions().front().latency_breakdown.total() ==
+           system.completions().front().latency);
   }
 
   // V0.1: aggregation cannot hide channel interleaving. Four 64 B bursts
@@ -323,5 +325,50 @@ int main() {
     config.enable_rfm = true;
     config.rfm_activation_threshold = 4;
     config.validate();
+  }
+
+  // V0.6.4: writes use tCWL while reads use tCL, and the exclusive stage
+  // breakdown sums to the externally visible latency.
+  {
+    auto config = hbmsim::HbmConfig::hbm2_2000();
+    config.enable_request_merging = false;
+    hbmsim::HbmSystem system(config);
+    assert(system.submit({1, hbmsim::HbmOp::Write, 0, 32, 0, 0}).accepted());
+    system.run();
+    const auto& completion = system.completions().front();
+    assert(completion.completion_time == 19'000);
+    assert(completion.latency_breakdown.data_ready == 5'000);
+    assert(completion.latency_breakdown.total() == completion.latency);
+  }
+
+  // V0.6.4: HBM row and column command buses can both issue at the same
+  // timestamp. The second ACT overlaps the first RD at 14 ns.
+  {
+    auto config = hbmsim::HbmConfig::hbm2_2000();
+    config.enable_request_merging = false;
+    hbmsim::HbmSystem system(config);
+    assert(system.submit({1, hbmsim::HbmOp::Read, 0, 32, 0, 0}).accepted());
+    assert(system.submit({2, hbmsim::HbmOp::Read, 1ULL << 8, 32,
+                          14'000, 0}).accepted());
+    system.run();
+    assert(system.completions().at(1).completion_time == 44'000);
+    const auto& channel = system.stats().channels.front();
+    assert(channel.row_command_bus.issued_commands == 2);
+    assert(channel.column_command_bus.issued_commands == 2);
+  }
+
+  // V0.6.4: optional same-address merging retains two logical completions
+  // while consuming one data command and one physical transfer.
+  {
+    auto config = base_config();
+    config.enable_request_merging = true;
+    hbmsim::HbmSystem system(config);
+    assert(system.submit({1, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
+    assert(system.submit({2, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
+    system.run();
+    assert(system.completions().size() == 2);
+    assert(system.stats().read_commands == 1);
+    assert(system.stats().channels[0].queue.merged_accesses == 1);
+    assert(system.stats().channels[0].data_bus_busy_time == 64);
   }
 }

@@ -10,29 +10,58 @@ constexpr std::array<AddressLevel, 7> kHbmLevels{
     AddressLevel::BankGroup, AddressLevel::Bank, AddressLevel::Row,
     AddressLevel::Column};
 
-constexpr std::array<CommandPrerequisite, 8> kPrerequisites{{
-    {HbmCommand::Read, BankCondition::DifferentRow, HbmCommand::PreBank},
-    {HbmCommand::Read, BankCondition::Closed, HbmCommand::Act},
-    {HbmCommand::Write, BankCondition::DifferentRow, HbmCommand::PreBank},
-    {HbmCommand::Write, BankCondition::Closed, HbmCommand::Act},
-    {HbmCommand::ReadAuto, BankCondition::DifferentRow, HbmCommand::PreBank},
-    {HbmCommand::ReadAuto, BankCondition::Closed, HbmCommand::Act},
-    {HbmCommand::WriteAuto, BankCondition::DifferentRow, HbmCommand::PreBank},
-    {HbmCommand::WriteAuto, BankCondition::Closed, HbmCommand::Act},
+constexpr std::array<CommandPrerequisite, 10> kHbm2Prerequisites{{
+    {HbmCommand::Read, CommandCondition::DifferentRow, HbmCommand::PreBank},
+    {HbmCommand::Read, CommandCondition::TargetClosed, HbmCommand::Act},
+    {HbmCommand::Write, CommandCondition::DifferentRow, HbmCommand::PreBank},
+    {HbmCommand::Write, CommandCondition::TargetClosed, HbmCommand::Act},
+    {HbmCommand::ReadAuto, CommandCondition::DifferentRow, HbmCommand::PreBank},
+    {HbmCommand::ReadAuto, CommandCondition::TargetClosed, HbmCommand::Act},
+    {HbmCommand::WriteAuto, CommandCondition::DifferentRow, HbmCommand::PreBank},
+    {HbmCommand::WriteAuto, CommandCondition::TargetClosed, HbmCommand::Act},
+    {HbmCommand::RefreshPerBank, CommandCondition::TargetOpen, HbmCommand::PreBank},
+    {HbmCommand::RefreshAllBank, CommandCondition::AnyOpen, HbmCommand::PreAll},
 }};
 
-constexpr std::array<CommandTransition, 11> kTransitions{{
-    {HbmCommand::Act, BankTransition::OpenTarget},
-    {HbmCommand::PreBank, BankTransition::Close},
-    {HbmCommand::PreAll, BankTransition::Close},
-    {HbmCommand::Read, BankTransition::None},
-    {HbmCommand::Write, BankTransition::None},
-    {HbmCommand::ReadAuto, BankTransition::Close},
-    {HbmCommand::WriteAuto, BankTransition::Close},
-    {HbmCommand::RefreshAllBank, BankTransition::Close},
-    {HbmCommand::RefreshPerBank, BankTransition::Close},
-    {HbmCommand::RfmAllBank, BankTransition::Close},
-    {HbmCommand::RfmPerBank, BankTransition::Close},
+constexpr std::array<CommandPrerequisite, 12> kHbm3Prerequisites{{
+    {HbmCommand::Read, CommandCondition::DifferentRow, HbmCommand::PreBank},
+    {HbmCommand::Read, CommandCondition::TargetClosed, HbmCommand::Act},
+    {HbmCommand::Write, CommandCondition::DifferentRow, HbmCommand::PreBank},
+    {HbmCommand::Write, CommandCondition::TargetClosed, HbmCommand::Act},
+    {HbmCommand::ReadAuto, CommandCondition::DifferentRow, HbmCommand::PreBank},
+    {HbmCommand::ReadAuto, CommandCondition::TargetClosed, HbmCommand::Act},
+    {HbmCommand::WriteAuto, CommandCondition::DifferentRow, HbmCommand::PreBank},
+    {HbmCommand::WriteAuto, CommandCondition::TargetClosed, HbmCommand::Act},
+    {HbmCommand::RefreshPerBank, CommandCondition::TargetOpen, HbmCommand::PreBank},
+    {HbmCommand::RefreshAllBank, CommandCondition::AnyOpen, HbmCommand::PreAll},
+    {HbmCommand::RfmPerBank, CommandCondition::TargetOpen, HbmCommand::PreBank},
+    {HbmCommand::RfmAllBank, CommandCondition::AnyOpen, HbmCommand::PreAll},
+}};
+
+constexpr std::array<CommandTransition, 9> kHbm2Transitions{{
+    {HbmCommand::Act, CommandScope::Bank, BankTransition::OpenTarget},
+    {HbmCommand::PreBank, CommandScope::Bank, BankTransition::Close},
+    {HbmCommand::PreAll, CommandScope::Channel, BankTransition::Close},
+    {HbmCommand::Read, CommandScope::Bank, BankTransition::None},
+    {HbmCommand::Write, CommandScope::Bank, BankTransition::None},
+    {HbmCommand::ReadAuto, CommandScope::Bank, BankTransition::Close},
+    {HbmCommand::WriteAuto, CommandScope::Bank, BankTransition::Close},
+    {HbmCommand::RefreshAllBank, CommandScope::Channel, BankTransition::Close},
+    {HbmCommand::RefreshPerBank, CommandScope::Bank, BankTransition::Close},
+}};
+
+constexpr std::array<CommandTransition, 11> kHbm3Transitions{{
+    {HbmCommand::Act, CommandScope::Bank, BankTransition::OpenTarget},
+    {HbmCommand::PreBank, CommandScope::Bank, BankTransition::Close},
+    {HbmCommand::PreAll, CommandScope::Channel, BankTransition::Close},
+    {HbmCommand::Read, CommandScope::Bank, BankTransition::None},
+    {HbmCommand::Write, CommandScope::Bank, BankTransition::None},
+    {HbmCommand::ReadAuto, CommandScope::Bank, BankTransition::Close},
+    {HbmCommand::WriteAuto, CommandScope::Bank, BankTransition::Close},
+    {HbmCommand::RefreshAllBank, CommandScope::Channel, BankTransition::Close},
+    {HbmCommand::RefreshPerBank, CommandScope::Bank, BankTransition::Close},
+    {HbmCommand::RfmAllBank, CommandScope::Channel, BankTransition::Close},
+    {HbmCommand::RfmPerBank, CommandScope::Bank, BankTransition::Close},
 }};
 
 bool common_support(HbmCommand command) {
@@ -128,21 +157,58 @@ HbmTimingSpec HbmSpeedBin::resolve() const {
   return t;
 }
 
+CommandBus HbmStandard::command_bus(HbmCommand command) const {
+  return command == HbmCommand::Read || command == HbmCommand::Write ||
+                 command == HbmCommand::ReadAuto ||
+                 command == HbmCommand::WriteAuto
+             ? CommandBus::Column
+             : CommandBus::Row;
+}
+
+CommandDecision HbmStandard::resolve_prerequisite(
+    HbmCommand requested, std::uint32_t target_row,
+    const HbmBankState& target_bank, bool any_bank_open) const {
+  if (!supports(requested)) {
+    throw std::logic_error("requested command is not supported by standard");
+  }
+  for (const auto& rule : prerequisites()) {
+    if (rule.requested != requested) continue;
+    const bool matches =
+        rule.condition == CommandCondition::TargetClosed
+            ? !target_bank.open_row.has_value()
+        : rule.condition == CommandCondition::DifferentRow
+            ? target_bank.open_row.has_value() &&
+                  *target_bank.open_row != target_row
+        : rule.condition == CommandCondition::TargetOpen
+            ? target_bank.open_row.has_value()
+            : any_bank_open;
+    if (matches) {
+      return {rule.prerequisite, transition_for(rule.prerequisite).scope,
+              false};
+    }
+  }
+  return {requested, transition_for(requested).scope, true};
+}
+
+const CommandTransition& HbmStandard::transition_for(
+    HbmCommand command) const {
+  for (const auto& transition : transitions()) {
+    if (transition.command == command) return transition;
+  }
+  throw std::logic_error("standard has no transition for command");
+}
+
 void HbmStandard::apply_transition(HbmCommand command,
                                    std::uint32_t target_row,
                                    HbmBankState& bank) const {
-  for (const auto& rule : transitions()) {
-    if (rule.command != command) continue;
-    if (rule.transition == BankTransition::OpenTarget) {
+  const auto& rule = transition_for(command);
+  if (rule.transition == BankTransition::OpenTarget) {
       bank.open_row = target_row;
       bank.precharge_pending = false;
-    } else if (rule.transition == BankTransition::Close) {
+  } else if (rule.transition == BankTransition::Close) {
       bank.open_row.reset();
       bank.precharge_pending = false;
-    }
-    return;
   }
-  throw std::logic_error("standard has no transition for command");
 }
 
 Hbm2Standard::Hbm2Standard()
@@ -205,22 +271,22 @@ bool Hbm4Standard::supports(HbmCommand command) const {
 }
 
 std::span<const CommandPrerequisite> Hbm2Standard::prerequisites() const {
-  return kPrerequisites;
+  return kHbm2Prerequisites;
 }
 std::span<const CommandPrerequisite> Hbm3Standard::prerequisites() const {
-  return kPrerequisites;
+  return kHbm3Prerequisites;
 }
 std::span<const CommandPrerequisite> Hbm4Standard::prerequisites() const {
-  return kPrerequisites;
+  return kHbm3Prerequisites;
 }
 std::span<const CommandTransition> Hbm2Standard::transitions() const {
-  return kTransitions;
+  return kHbm2Transitions;
 }
 std::span<const CommandTransition> Hbm3Standard::transitions() const {
-  return kTransitions;
+  return kHbm3Transitions;
 }
 std::span<const CommandTransition> Hbm4Standard::transitions() const {
-  return kTransitions;
+  return kHbm3Transitions;
 }
 
 SimTime Hbm2Standard::command_duration(HbmCommand command) const {

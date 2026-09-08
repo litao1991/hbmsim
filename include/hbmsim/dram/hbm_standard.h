@@ -56,18 +56,27 @@ struct HbmSpeedBin {
   [[nodiscard]] HbmTimingSpec resolve() const;
 };
 
-enum class BankCondition { Closed, DifferentRow };
+enum class CommandCondition { TargetClosed, DifferentRow, TargetOpen, AnyOpen };
+enum class CommandScope { Bank, Channel };
+enum class CommandBus { Unified, Row, Column };
 enum class BankTransition { None, OpenTarget, Close };
 
 struct CommandPrerequisite {
   HbmCommand requested;
-  BankCondition condition;
+  CommandCondition condition;
   HbmCommand prerequisite;
 };
 
 struct CommandTransition {
   HbmCommand command;
+  CommandScope scope;
   BankTransition transition;
+};
+
+struct CommandDecision {
+  HbmCommand command = HbmCommand::Act;
+  CommandScope scope = CommandScope::Bank;
+  bool final_command = false;
 };
 
 class HbmStandard : public DramSpec {
@@ -81,7 +90,13 @@ class HbmStandard : public DramSpec {
   [[nodiscard]] virtual std::span<const CommandTransition> transitions() const = 0;
   [[nodiscard]] virtual bool supports(HbmCommand command) const = 0;
   [[nodiscard]] virtual SimTime command_duration(HbmCommand command) const = 0;
+  [[nodiscard]] virtual CommandBus command_bus(HbmCommand command) const;
 
+  [[nodiscard]] CommandDecision resolve_prerequisite(
+      HbmCommand requested, std::uint32_t target_row,
+      const HbmBankState& target_bank, bool any_bank_open) const;
+  [[nodiscard]] const CommandTransition& transition_for(
+      HbmCommand command) const;
   void apply_transition(HbmCommand command, std::uint32_t target_row,
                         HbmBankState& bank) const;
 };

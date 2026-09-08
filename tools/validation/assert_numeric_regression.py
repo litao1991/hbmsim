@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject unintended HBMSim HBM2 numerical drift from the frozen v0.3 baseline."""
+"""Reject unintended HBMSim HBM2 numerical drift from the v0.6.4 baseline."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import math
 from pathlib import Path
 
 
-BASELINE = Path("validation/baselines/hbmsim-hbm2_2000-v0.3.csv")
+BASELINE = Path("validation/baselines/hbmsim-hbm2_2000-v0.6.4.csv")
 CURRENT = Path("validation/results/hbmsim-summary.csv")
 EXACT_FIELDS = ("requests", "act_commands", "pre_commands", "read_commands",
                 "write_commands", "row_hits", "row_misses", "row_conflicts")
@@ -34,7 +34,7 @@ def main() -> None:
             if not math.isclose(float(current[trace][field]), float(baseline[trace][field]),
                                 rel_tol=1e-6, abs_tol=1e-6):
                 raise SystemExit(f"HBM2 numerical gate: {trace}/{field} drifted")
-    print(f"HBM2 numerical gate passed: {len(current)} traces match frozen v0.3")
+    print(f"HBM2 numerical gate passed: {len(current)} traces match frozen v0.6.4")
 
 
 if __name__ == "__main__":

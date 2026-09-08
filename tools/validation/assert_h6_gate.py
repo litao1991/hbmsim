@@ -37,29 +37,34 @@ def assert_tool_set(expected: dict[str, int], tools: tuple[str, ...], suffix: st
 
 
 def main() -> None:
-    expected = {
+    expected_hbm2 = {
         trace.stem: len(read_rows(trace))
-        for trace in sorted(TRACES.glob("*.csv"))
+        for trace in sorted((TRACES / "hbm2_2000").glob("*.csv"))
     }
-    if not expected:
-        raise SystemExit("H6 gate: no normalized traces found")
+    expected_hbm3 = {
+        trace.stem: len(read_rows(trace))
+        for trace in sorted((TRACES / "hbm3_6400").glob("*.csv"))
+    }
+    if not expected_hbm2 or not expected_hbm3:
+        raise SystemExit("H6 gate: no profile-aware traces found")
 
-    assert_tool_set(expected, TOOLS)
-    assert_tool_set(expected, ("hbmsim", "ramulator2"), "-hbm3")
+    assert_tool_set(expected_hbm2, TOOLS)
+    assert_tool_set(expected_hbm3, ("hbmsim", "ramulator2"), "-hbm3")
 
     comparison_path = RESULTS / "three-simulator-comparison.csv"
     if not comparison_path.exists():
         raise SystemExit(f"H6 gate: missing {comparison_path}")
     comparison = read_rows(comparison_path)
-    if len(comparison) != len(expected) * len(TOOLS):
+    if len(comparison) != len(expected_hbm2) * len(TOOLS):
         raise SystemExit("H6 gate: incomplete three-simulator comparison table")
     hbm3_comparison = RESULTS / "hbm3-two-simulator-comparison.csv"
-    if not hbm3_comparison.exists() or len(read_rows(hbm3_comparison)) != len(expected) * 2:
+    if not hbm3_comparison.exists() or len(read_rows(hbm3_comparison)) != len(expected_hbm3) * 2:
         raise SystemExit("H6 gate: incomplete HBM3 two-simulator comparison table")
     metadata = Path("validation/reference-inputs/hbm3-metadata.json").read_text(encoding="utf-8")
     if '"comparison_status": "unsupported"' not in metadata:
         raise SystemExit("H6 gate: HBM3 DRAMSys unsupported status is not explicit")
-    print(f"H6 gate passed: HBM2 {len(expected)}x3 and HBM3 {len(expected)}x2")
+    print(f"H6 gate passed: HBM2 {len(expected_hbm2)}x3 and "
+          f"HBM3 {len(expected_hbm3)}x2")
 
 
 if __name__ == "__main__":
