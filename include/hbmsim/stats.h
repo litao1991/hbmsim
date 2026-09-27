@@ -62,6 +62,9 @@ struct HbmStats {
   std::uint64_t rejected_transactions = 0;
   std::uint64_t completed_transactions = 0;
   std::uint64_t modeled_accesses = 0;
+  std::uint64_t physical_accesses = 0;
+  std::uint64_t physical_read_bytes = 0;
+  std::uint64_t physical_write_bytes = 0;
   std::uint64_t issued_commands = 0;
   std::uint64_t read_bytes = 0;
   std::uint64_t write_bytes = 0;

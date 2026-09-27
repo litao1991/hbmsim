@@ -10,36 +10,34 @@ EventToken EventQueue::schedule_at(SimTime when, EventCallback callback) {
     throw std::invalid_argument("cannot schedule an event in the past");
   }
   const auto token = next_token_++;
-  events_.push(Event{when, next_sequence_++, token, std::move(callback)});
+  const Key key{when, next_sequence_++};
+  events_.emplace(key, Event{when, key.second, token, std::move(callback)});
+  tokens_.emplace(token, key);
   return token;
 }
 
 bool EventQueue::cancel(EventToken token) {
-  return token != 0 && cancelled_.insert(token).second;
+  const auto found = tokens_.find(token);
+  if (found == tokens_.end()) return false;
+  events_.erase(found->second);
+  tokens_.erase(found);
+  return true;
 }
 
 bool EventQueue::empty() {
-  discard_cancelled();
   return events_.empty();
 }
 
 SimTime EventQueue::next_time() {
-  discard_cancelled();
   if (events_.empty()) throw std::logic_error("event queue is empty");
-  return events_.top().time;
-}
-
-void EventQueue::discard_cancelled() {
-  while (!events_.empty() && cancelled_.erase(events_.top().token) != 0) {
-    events_.pop();
-  }
+  return events_.begin()->second.time;
 }
 
 void EventQueue::dispatch_one() {
-  discard_cancelled();
   if (events_.empty()) return;
-  Event event = events_.top();
-  events_.pop();
+  Event event = std::move(events_.begin()->second);
+  events_.erase(events_.begin());
+  tokens_.erase(event.token);
   now_ = event.time;
   event.callback();
 }
@@ -54,16 +52,13 @@ void EventQueue::run_until(SimTime until) {
   if (until < now_) {
     throw std::invalid_argument("cannot run an event queue backwards in time");
   }
-  discard_cancelled();
-  while (!events_.empty() && events_.top().time <= until) {
+  while (!events_.empty() && events_.begin()->second.time <= until) {
     dispatch_one();
-    discard_cancelled();
   }
   now_ = until;
 }
 
 bool EventQueue::run_next() {
-  discard_cancelled();
   if (events_.empty()) return false;
   dispatch_one();
   return true;

@@ -56,24 +56,24 @@ class TestSystem {
 
 hbmsim::HbmConfig base_config() {
   hbmsim::HbmConfig config;
-  config.device.organization.topology.pseudo_channels_per_channel = 1;
-  config.device.organization.topology.bank_groups_per_pseudo_channel = 1;
-  config.device.organization.topology.banks_per_bank_group = 1;
-  config.device.organization.address_interleave_bytes = 64;
-  config.device.organization.columns_per_row = 2;
-  config.device.organization.rows_per_bank = 8;
-  config.device.organization.pseudo_channel_rate = {1'000, 1'000};
-  config.device.timing.t_rcd = 10;
-  config.device.timing.t_rp = 5;
-  config.device.timing.t_cl = 20;
-  config.device.timing.t_ras = 0;
-  config.device.timing.t_rc = 0;
-  config.device.timing.t_ccd = 0;
-  config.device.timing.t_rrd = 0;
-  config.device.timing.t_faw = 0;
-  config.device.timing.t_wtr = 0;
-  config.device.timing.t_rtw = 0;
-  config.device.timing.t_rfc = 100;
+  config.device.edit_organization().topology.pseudo_channels_per_channel = 1;
+  config.device.edit_organization().topology.bank_groups_per_pseudo_channel = 1;
+  config.device.edit_organization().topology.banks_per_bank_group = 1;
+  config.device.edit_organization().address_interleave_bytes = 64;
+  config.device.edit_organization().columns_per_row = 2;
+  config.device.edit_organization().rows_per_bank = 8;
+  config.device.edit_organization().pseudo_channel_rate = {1'000, 1'000};
+  config.device.edit_timing().t_rcd = 10;
+  config.device.edit_timing().t_rp = 5;
+  config.device.edit_timing().t_cl = 20;
+  config.device.edit_timing().t_ras = 0;
+  config.device.edit_timing().t_rc = 0;
+  config.device.edit_timing().t_ccd = 0;
+  config.device.edit_timing().t_rrd = 0;
+  config.device.edit_timing().t_faw = 0;
+  config.device.edit_timing().t_wtr = 0;
+  config.device.edit_timing().t_rtw = 0;
+  config.device.edit_timing().t_rfc = 100;
   return config;
 }
 
@@ -83,15 +83,15 @@ int main() {
   // V0.2: the HBM2_2000 profile is the explicit validation baseline.
   {
     const auto config = hbmsim::HbmConfig::hbm2_2000();
-    assert(config.device.standard->name() == "HBM2");
-    assert(config.device.organization.topology.pseudo_channels_per_channel == 2);
-    assert(config.device.organization.topology.bank_groups_per_pseudo_channel == 4);
-    assert(config.device.organization.topology.banks_per_bank_group == 4);
-    assert(config.device.organization.address_interleave_bytes == 32);
-    assert(config.device.organization.physical_burst_bytes == 32);
-    assert(config.device.timing.t_rcd == 14'000);
-    assert(config.device.timing.t_rc == 48'000);
-    assert(config.device.timing.t_rfc == 260'000);
+    assert(config.device.standard()->name() == "HBM2");
+    assert(config.device.organization().topology.pseudo_channels_per_channel == 2);
+    assert(config.device.organization().topology.bank_groups_per_pseudo_channel == 4);
+    assert(config.device.organization().topology.banks_per_bank_group == 4);
+    assert(config.device.organization().address_interleave_bytes == 32);
+    assert(config.device.organization().physical_burst_bytes == 32);
+    assert(config.device.timing().t_rcd == 14'000);
+    assert(config.device.timing().t_rc == 48'000);
+    assert(config.device.timing().t_rfc == 260'000);
     TestSystem system(config);
     const auto mapped = system.map_address((1ULL << 5) | (2ULL << 6) |
                                            (3ULL << 8) | (1ULL << 10) |
@@ -109,22 +109,22 @@ int main() {
     auto config = hbmsim::HbmConfig::hbm2_2000();
     // This isolates pseudo-channel data resources from standard command-bus
     // occupancy; the standard profile itself is covered separately above.
-    config.device.standard.reset();
-    config.device.timing.t_rcd = 0;
-    config.device.timing.t_command = 0;
-    config.device.timing.t_rcd_rd = 0;
-    config.device.timing.t_rcd_wr = 0;
-    config.device.timing.t_cl = 0;
-    config.device.timing.t_ccd = 0;
-    config.device.timing.t_ccd_s = 0;
-    config.device.timing.t_ccd_l = 0;
-    config.device.timing.t_rrd = 0;
-    config.device.timing.t_rrd_s = 0;
-    config.device.timing.t_rrd_l = 0;
-    config.device.timing.t_faw = 0;
-    config.device.timing.t_wtr_s = 0;
-    config.device.timing.t_wtr_l = 0;
-    config.device.organization.pseudo_channel_rate = {16, 1'000};
+    config.device = config.device.as_custom();
+    config.device.edit_timing().t_rcd = 0;
+    config.device.edit_timing().t_command = 0;
+    config.device.edit_timing().t_rcd_rd = 0;
+    config.device.edit_timing().t_rcd_wr = 0;
+    config.device.edit_timing().t_cl = 0;
+    config.device.edit_timing().t_ccd = 0;
+    config.device.edit_timing().t_ccd_s = 0;
+    config.device.edit_timing().t_ccd_l = 0;
+    config.device.edit_timing().t_rrd = 0;
+    config.device.edit_timing().t_rrd_s = 0;
+    config.device.edit_timing().t_rrd_l = 0;
+    config.device.edit_timing().t_faw = 0;
+    config.device.edit_timing().t_wtr_s = 0;
+    config.device.edit_timing().t_wtr_l = 0;
+    config.device.edit_organization().pseudo_channel_rate = {16, 1'000};
     TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 32, 0, 0}).accepted());
     assert(system.submit({2, hbmsim::HbmOp::Read, 32, 32, 0, 0}).accepted());
@@ -138,12 +138,12 @@ int main() {
   // V0.5: HBM3 is a resolved standard profile, not an enum-only label.
   {
     const auto config = hbmsim::HbmConfig::hbm3_6400();
-    assert(config.device.standard->name() == "HBM3");
-    assert(config.device.timing.use_extended_hbm_timing);
-    assert(config.device.timing.t_rcd_rd == 19'375);
-    assert(config.device.timing.t_rcd_wr == 9'375);
-    assert(config.device.timing.t_ccd_l == 2'500);
-    assert(config.device.timing.t_rfcpb == 200'000);
+    assert(config.device.standard()->name() == "HBM3");
+    assert(config.device.timing().use_extended_hbm_timing);
+    assert(config.device.timing().t_rcd_rd == 19'375);
+    assert(config.device.timing().t_rcd_wr == 9'375);
+    assert(config.device.timing().t_ccd_l == 2'500);
+    assert(config.device.timing().t_rfcpb == 200'000);
   }
 
   // H2: a closed-row request plans ACT then waits tRCD before RD.
@@ -210,7 +210,7 @@ int main() {
   {
     auto config = base_config();
     config.controller.refresh_interval = 100;
-    config.device.timing.t_rcd = 1000;
+    config.device.edit_timing().t_rcd = 1000;
     TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
     assert(system.submit({2, hbmsim::HbmOp::Read, 64, 64, 2, 0}).accepted());
@@ -222,11 +222,11 @@ int main() {
   // H5: 16 KiB is represented by four 4 KiB accesses, never 256 64 B bursts.
   {
     auto config = base_config();
-    config.device.organization.address_interleave_bytes = 4096;
+    config.device.edit_organization().address_interleave_bytes = 4096;
     config.simulation.simulation_access_granularity_bytes = 4096;
-    config.device.timing.t_rcd = 0;
-    config.device.timing.t_cl = 0;
-    config.device.organization.pseudo_channel_rate = {100'000, 1'000};
+    config.device.edit_timing().t_rcd = 0;
+    config.device.edit_timing().t_cl = 0;
+    config.device.edit_organization().pseudo_channel_rate = {100'000, 1'000};
     TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 16 * 1024, 0, 0}).accepted());
     system.run();
@@ -243,12 +243,12 @@ int main() {
   // alternate between two channels and therefore remain four modelled accesses.
   {
     auto config = base_config();
-    config.device.organization.topology.channels_per_stack = 2;
-    config.device.organization.columns_per_row = 16;
+    config.device.edit_organization().topology.channels_per_stack = 2;
+    config.device.edit_organization().columns_per_row = 16;
     config.simulation.simulation_access_granularity_bytes = 4096;
-    config.device.timing.t_rcd = 0;
-    config.device.timing.t_cl = 0;
-    config.device.organization.pseudo_channel_rate = {100'000, 1'000};
+    config.device.edit_timing().t_rcd = 0;
+    config.device.edit_timing().t_cl = 0;
+    config.device.edit_organization().pseudo_channel_rate = {100'000, 1'000};
     TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 256, 0, 0}).accepted());
     system.run();
@@ -261,11 +261,11 @@ int main() {
   // the group even when the configured aggregation limit is larger.
   {
     auto config = base_config();
-    config.device.organization.columns_per_row = 2;
+    config.device.edit_organization().columns_per_row = 2;
     config.simulation.simulation_access_granularity_bytes = 4096;
-    config.device.timing.t_rcd = 0;
-    config.device.timing.t_cl = 0;
-    config.device.organization.pseudo_channel_rate = {100'000, 1'000};
+    config.device.edit_timing().t_rcd = 0;
+    config.device.edit_timing().t_cl = 0;
+    config.device.edit_organization().pseudo_channel_rate = {100'000, 1'000};
     TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 256, 0, 0}).accepted());
     system.run();
@@ -276,11 +276,11 @@ int main() {
   // H6: per-bank refresh rotates banks without using the all-bank blocker.
   {
     auto config = base_config();
-    config.device.organization.topology.banks_per_bank_group = 2;
+    config.device.edit_organization().topology.banks_per_bank_group = 2;
     config.controller.refresh_policy = hbmsim::RefreshPolicy::PerBank;
     config.controller.refresh_interval = 10;
-    config.device.timing.t_rcd = 100;
-    config.device.timing.t_rfcpb = 10;
+    config.device.edit_timing().t_rcd = 100;
+    config.device.edit_timing().t_rfcpb = 10;
     TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
     system.run_until(25);
@@ -293,10 +293,10 @@ int main() {
   {
     auto config = base_config();
     config.controller.refresh_interval = 100;
-    config.device.timing.t_rcd = 0;
-    config.device.timing.t_cl = 0;
-    config.device.timing.t_rfc = 10;
-    config.device.organization.pseudo_channel_rate = {1'000, 1'000};
+    config.device.edit_timing().t_rcd = 0;
+    config.device.edit_timing().t_cl = 0;
+    config.device.edit_timing().t_rfc = 10;
+    config.device.edit_organization().pseudo_channel_rate = {1'000, 1'000};
     TestSystem system(config);
     assert(system.submit({1, hbmsim::HbmOp::Read, 0, 64, 0, 0}).accepted());
     assert(system.submit({2, hbmsim::HbmOp::Read, 0, 64, 500, 0}).accepted());

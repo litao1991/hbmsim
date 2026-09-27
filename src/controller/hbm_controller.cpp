@@ -10,18 +10,19 @@ namespace {
 
 class NoRequestCoalescer final : public IRequestCoalescer {
  public:
-  bool can_merge(const HbmAccess&, const HbmAccess&) const override {
+  bool can_merge(const LogicalAccess&, const LogicalAccess&) const override {
     return false;
   }
 };
 
 class SameAddressReadCoalescer final : public IRequestCoalescer {
  public:
-  bool can_merge(const HbmAccess& physical,
-                 const HbmAccess& logical) const override {
+  bool can_merge(const LogicalAccess& physical,
+                 const LogicalAccess& logical) const override {
     const auto& left = physical.address;
     const auto& right = logical.address;
     return physical.op == HbmOp::Read && logical.op == HbmOp::Read &&
+           physical.byte_address == logical.byte_address &&
            left.flat_bank == right.flat_bank && left.row == right.row &&
            left.column == right.column &&
            physical.size_bytes == logical.size_bytes &&
@@ -409,7 +410,7 @@ void HbmController::record_command(HbmCommand command,
   ++stats_.issued_commands;
   auto& channel = stats_.channels.at(config_.channel);
   ++channel.command_bus.issued_commands;
-  ++channel.banks.at(bank_index).issued_commands;
+  if (config_.detailed_stats) ++channel.banks.at(bank_index).issued_commands;
   const auto duration = config_.standard
                             ? config_.standard->command_duration(command)
                             : config_.timing.t_command;
@@ -439,7 +440,7 @@ void HbmController::record_command(HbmCommand command,
   }
 }
 
-std::optional<HbmIssuedAccess> HbmController::issue(Candidate candidate,
+std::optional<PhysicalAccess> HbmController::issue(Candidate candidate,
                                                      SimTime now) {
   auto& queue = candidate.is_write ? write_queue_ : read_queue_;
   if (candidate.index >= queue.size()) throw std::logic_error("stale scheduler candidate");
@@ -450,7 +451,7 @@ std::optional<HbmIssuedAccess> HbmController::issue(Candidate candidate,
     access.first_command_issued = true;
     access.first_command_at = now;
     access.latency_breakdown.queue_wait = now - access.enqueued_at;
-    stats_.channels.at(config_.channel).queue.queue_wait_time +=
+    if (config_.detailed_stats) stats_.channels.at(config_.channel).queue.queue_wait_time +=
         access.latency_breakdown.queue_wait;
   }
   access.command_eligible = false;
@@ -486,8 +487,17 @@ std::optional<HbmIssuedAccess> HbmController::issue(Candidate candidate,
   std::vector<HbmAccess> completed;
   completed.push_back(access);
   queue.erase(queue.begin() + static_cast<std::ptrdiff_t>(candidate.index));
-  {
-    for (auto iterator = queue.begin(); iterator != queue.end();) {
+  if (!candidate.is_write) {
+    const auto& logical = completed.front();
+    const bool pending_write = std::any_of(
+          write_queue_.begin(), write_queue_.end(), [&](const auto& write) {
+            // Never coalesce across a potentially observable overlapping write.
+            return write.metadata.ordering_domain == logical.metadata.ordering_domain &&
+                (write.byte_address <= logical.byte_address
+                    ? logical.byte_address - write.byte_address < write.size_bytes
+                    : write.byte_address - logical.byte_address < logical.size_bytes);
+          });
+    for (auto iterator = queue.begin(); !pending_write && iterator != queue.end();) {
       if (!request_coalescer_->can_merge(completed.front(), *iterator)) {
         ++iterator;
         continue;
@@ -516,26 +526,41 @@ std::optional<HbmIssuedAccess> HbmController::issue(Candidate candidate,
   const auto completion = data_start + duration;
   bus_ready = completion;
   channel.data_bus_busy_time += duration;
-  channel.pseudo_channels.at(completed_address.pseudo_channel).busy_time += duration;
+  if (config_.detailed_stats)
+    channel.pseudo_channels.at(completed_address.pseudo_channel).busy_time += duration;
   for (auto& item : completed) {
     if (!item.first_command_issued) {
       item.first_command_issued = true;
       item.first_command_at = now;
       item.latency_breakdown.queue_wait = now - item.enqueued_at;
-      channel.queue.queue_wait_time += item.latency_breakdown.queue_wait;
+      if (config_.detailed_stats)
+        channel.queue.queue_wait_time += item.latency_breakdown.queue_wait;
     }
     item.latency_breakdown.command_phase = now - item.first_command_at;
     item.latency_breakdown.data_ready = cas_latency;
     item.latency_breakdown.data_bus_wait = data_start - data_ready;
     item.latency_breakdown.data_service = duration;
-    channel.queue.command_wait_time += item.latency_breakdown.command_phase;
-    channel.queue.array_wait_time += item.latency_breakdown.data_ready;
-    channel.queue.data_bus_wait_time += item.latency_breakdown.data_bus_wait;
-    channel.queue.data_service_time += item.latency_breakdown.data_service;
+    if (config_.detailed_stats) {
+      channel.queue.command_wait_time += item.latency_breakdown.command_phase;
+      channel.queue.array_wait_time += item.latency_breakdown.data_ready;
+      channel.queue.data_bus_wait_time += item.latency_breakdown.data_bus_wait;
+      channel.queue.data_service_time += item.latency_breakdown.data_service;
+    }
   }
-  channel.banks.at(bank_index).busy_time +=
-      completion - completed.front().first_command_at;
-  return HbmIssuedAccess{std::move(completed), completion};
+  if (config_.detailed_stats)
+    channel.banks.at(bank_index).busy_time +=
+        completion - completed.front().first_command_at;
+  ++stats_.physical_accesses;
+  if (candidate.is_write) stats_.physical_write_bytes += completed_size;
+  else stats_.physical_read_bytes += completed_size;
+  PhysicalAccess physical{candidate.is_write ? HbmOp::Write : HbmOp::Read,
+                          completed_address, completed_size, candidate.command,
+                          now, completion, {}};
+  for (const auto& item : completed)
+    physical.completions.push_back(
+        {static_cast<const LogicalAccess&>(item), item.access_class,
+         config_.detailed_stats ? item.latency_breakdown : HbmLatencyBreakdown{}});
+  return physical;
 }
 
 void HbmController::issue_maintenance(MaintenanceCandidate candidate,
@@ -641,7 +666,7 @@ HbmControllerStep HbmController::drive(SimTime now) {
   if (now < refresh_busy_until_) {
     const auto unaccounted_from = std::max(now, refresh_stall_accounted_until_);
     if (refresh_busy_until_ > unaccounted_from) {
-      stats_.channels.at(config_.channel).queue.refresh_stall_time +=
+      if (config_.detailed_stats) stats_.channels.at(config_.channel).queue.refresh_stall_time +=
           refresh_busy_until_ - unaccounted_from;
       refresh_stall_accounted_until_ = refresh_busy_until_;
     }
@@ -661,7 +686,7 @@ HbmControllerStep HbmController::drive(SimTime now) {
   return {now, completed};
 }
 
-void HbmController::complete_access(const HbmAccess& access, SimTime) {
+void HbmController::complete_access(const LogicalCompletion& access, SimTime) {
   if (outstanding_accesses_ == 0) throw std::logic_error("access completion underflow");
   --outstanding_accesses_;
   auto& channel = stats_.channels.at(config_.channel);

@@ -5,8 +5,8 @@
 
 #include <cstdint>
 #include <functional>
-#include <queue>
-#include <unordered_set>
+#include <map>
+#include <unordered_map>
 #include <vector>
 
 namespace hbmsim {
@@ -38,14 +38,14 @@ class EventQueue final : public ISimScheduler {
   [[nodiscard]] SimTime next_time();
 
  private:
-  void discard_cancelled();
   void dispatch_one();
 
   SimTime now_ = 0;
   std::uint64_t next_sequence_ = 0;
   EventToken next_token_ = 1;
-  std::priority_queue<Event, std::vector<Event>, EventCompare> events_;
-  std::unordered_set<EventToken> cancelled_;
+  using Key = std::pair<SimTime, std::uint64_t>;
+  std::map<Key, Event> events_;
+  std::unordered_map<EventToken, Key> tokens_;
 };
 
 }  // namespace hbmsim

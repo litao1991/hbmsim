@@ -25,17 +25,18 @@ third_party/reference/        pinned, read-only upstream study sources
 
 ## Status
 
-H0–H6 and v0.7.3 are implemented. Each physical channel owns an independent `HbmController` with finite read/write queues, bank and refresh state, separate row/column command buses, data resources, and diagnostics. `HbmSystem` owns transaction splitting, admission and parent completion but not global time: callers inject `ISimScheduler`. All scheduler choices use `IScheduler`; row, refresh, mapping, and request-coalescing decisions use policy interfaces.
+The v0.7.4–v0.7.6 H7 boundary is implemented and locally validated; see [the acceptance report](docs/V0_7_6_ACCEPTANCE.md) for scope and remaining work. Each physical channel owns an independent `HbmController` with configurable read/write queue limits, bank and refresh state, separate row/column command buses, data resources, and diagnostics. `HbmSystem` owns lazy transaction splitting, admission and parent completion but not global time: callers inject `ISimScheduler`. All scheduler choices use `IScheduler`; row, refresh, mapping, and request-coalescing decisions use policy interfaces.
 
 ```sh
 cmake -S . -B build
 cmake --build build
 ctest --test-dir build --output-on-failure
 ./build/hbmsim traces/h0_smoke.csv
+./build/hbmsim traces/h0_smoke.csv --queue-capacity 1
 ```
 
 The standalone CLI submits requests only when their trace arrival is reached,
-retries bounded-queue backpressure by advancing to real events, and streams
+retries bounded-queue backpressure on capacity notifications, and streams
 completion CSV rows. Library users receive capacity notifications with the
 available read/write slots. Completion history is off by default and can be
 enabled explicitly through `SimulationConfig::retain_completions` for tests.
@@ -46,5 +47,13 @@ coalescing policies), and `SimulationConfig` (model granularity and reporting).
 Requests and completions carry traffic class, priority, opaque tag and ordering
 domain. Same-address read coalescing retains separate logical completions while
 one physical access consumes the command and data resources.
+
+Standard-backed device parameters are immutable: use `device.organization()`
+and `device.timing()` to read them. Research overrides require an explicit
+`device = device.as_custom()` followed by `edit_organization()` or `edit_timing()`.
+The default active-parent limit is 1024; queue capacity 0 retains the historical
+unlimited-queue mode. Set finite queue capacities for bounded integration runs.
+`detailed_stats=false` disables per-bank/PC diagnostics and completion latency
+breakdowns, but retains aggregate command/byte/physical-access counts.
 
 The canonical `Hbm2Standard` and `Hbm3Standard` objects provide organization, cycle-derived timing, commands, table-driven prerequisites/transitions, command-bus placement, and mapping. Command coverage includes bank/all-bank precharge, auto-precharge, all/per-bank refresh, and HBM3/HBM4 RFM. Reads use `tCL`, writes use `tCWL`; optional same-address merging preserves every logical completion while consuming one physical data command. Each completion reports mutually exclusive queue, command, data-ready, data-bus-wait, and transfer stages. GitHub Actions permanently gates HBM2 numerical drift and request completion across HBMSim/Ramulator/DRAMSys, plus HBM3 completion across HBMSim/Ramulator; the pinned DRAMSys version is explicitly marked unsupported for HBM3. See [docs/H6_REFERENCE_VALIDATION.md](docs/H6_REFERENCE_VALIDATION.md).

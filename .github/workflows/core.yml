@@ -1,0 +1,23 @@
+name: Core correctness
+on: [push, pull_request]
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        build_type: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+      - run: cmake --build build --parallel
+      - run: ctest --test-dir build --output-on-failure --timeout 60
+  sanitizers:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: >-
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+      - run: cmake --build build --parallel
+      - run: ctest --test-dir build --output-on-failure --timeout 120

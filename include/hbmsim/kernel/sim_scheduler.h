@@ -12,6 +12,10 @@ using EventCallback = std::function<void()>;
 
 // Component-neutral system-time authority. Implementations assign the global
 // same-time order and must outlive every attached HbmSystem.
+// schedule_at never invokes callbacks inline. Tokens are unique and cancel
+// returns false for unknown, cancelled or dispatched events. Cancellation
+// releases callback captures immediately. Components may submit from callbacks,
+// but must not destroy themselves during a callback or recursively run the DES.
 class ISimScheduler {
  public:
   virtual ~ISimScheduler() = default;

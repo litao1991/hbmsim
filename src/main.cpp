@@ -6,6 +6,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <optional>
 
 namespace {
 
@@ -28,12 +29,13 @@ std::uint64_t parse_u64(const std::string& value) {
 
 int main(int argc, char** argv) {
   if (argc < 2) {
-    std::cerr << "usage: hbmsim TRACE.csv [--profile hbm2_2000|hbm3_6400] [--completions FILE.csv]\n"
+    std::cerr << "usage: hbmsim TRACE.csv [--profile hbm2_2000|hbm3_6400] [--queue-capacity N] [--completions FILE.csv]\n"
                  "columns: arrival_ps,op,address,size_bytes[,client]\n";
     return 2;
   }
   std::string completion_path;
   hbmsim::HbmConfig config;
+  std::optional<std::size_t> queue_capacity;
   for (int index = 2; index < argc; index += 2) {
     if (index + 1 >= argc) {
       std::cerr << "option " << argv[index] << " requires a value\n";
@@ -43,6 +45,8 @@ int main(int argc, char** argv) {
     const std::string value(argv[index + 1]);
     if (option == "--completions") {
       completion_path = value;
+    } else if (option == "--queue-capacity") {
+      queue_capacity = parse_u64(value);
     } else if (option == "--profile") {
       if (value == "hbm2_2000") {
         config = hbmsim::HbmConfig::hbm2_2000();
@@ -57,6 +61,10 @@ int main(int argc, char** argv) {
       return 2;
     }
   }
+  if (queue_capacity) {
+    config.controller.read_queue_capacity = *queue_capacity;
+    config.controller.write_queue_capacity = *queue_capacity;
+  }
 
   std::ifstream trace(argv[1]);
   if (!trace) {
@@ -66,6 +74,8 @@ int main(int argc, char** argv) {
 
   hbmsim::EventQueue events;
   hbmsim::HbmSystem system(config, events);
+  bool capacity_changed = false;
+  system.set_capacity_callback([&](const auto&) { capacity_changed = true; });
   std::ofstream completion_output;
   if (!completion_path.empty()) {
     completion_output.open(completion_path);
@@ -102,6 +112,7 @@ int main(int argc, char** argv) {
   std::string line;
   std::uint64_t line_number = 0;
   std::uint64_t id = 1;
+  hbmsim::SimTime last_arrival = 0;
   try {
     while (std::getline(trace, line)) {
       ++line_number;
@@ -120,15 +131,20 @@ int main(int argc, char** argv) {
       hbmsim::HbmTransaction transaction{
           id++, op, parse_u64(fields[2]), parse_u64(fields[3]), parse_u64(fields[0]),
           fields.size() == 5 ? static_cast<hbmsim::ClientId>(parse_u64(fields[4])) : 0};
-      if (transaction.arrival_time < events.now()) {
+      if (transaction.arrival_time < last_arrival) {
         throw std::runtime_error("trace arrivals must be nondecreasing");
       }
-      events.run_until(transaction.arrival_time);
+      last_arrival = transaction.arrival_time;
+      if (transaction.arrival_time >= events.now())
+        events.run_until(transaction.arrival_time);
+      capacity_changed = false;
       auto result = system.try_submit_now(transaction);
       while (result.status == hbmsim::SubmitStatus::Backpressure) {
-        if (!events.run_next()) {
-          throw std::runtime_error("backpressure without a future capacity event");
+        while (!capacity_changed) {
+          if (!events.run_next())
+            throw std::runtime_error("backpressure without a future capacity event");
         }
+        capacity_changed = false;
         result = system.try_submit_now(transaction);
       }
       if (!result.accepted()) {
@@ -144,6 +160,9 @@ int main(int argc, char** argv) {
   const auto& stats = system.stats();
   std::cout << "completed_transactions," << stats.completed_transactions << '\n'
             << "modeled_accesses," << stats.modeled_accesses << '\n'
+            << "physical_accesses," << stats.physical_accesses << '\n'
+            << "physical_read_bytes," << stats.physical_read_bytes << '\n'
+            << "physical_write_bytes," << stats.physical_write_bytes << '\n'
             << "issued_commands," << stats.issued_commands << '\n'
             << "read_bytes," << stats.read_bytes << '\n'
             << "write_bytes," << stats.write_bytes << '\n'

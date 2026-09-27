@@ -10,6 +10,7 @@
 #include "hbmsim/transaction.h"
 
 #include <functional>
+#include <deque>
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -17,19 +18,34 @@
 
 namespace hbmsim {
 
-struct DeviceSpec {
-  HbmOrganization organization{};
-  HbmTimingSpec timing{};
-  std::shared_ptr<const HbmStandard> standard;
-
+class DeviceSpec {
+ public:
   [[nodiscard]] static DeviceSpec custom();
   [[nodiscard]] static DeviceSpec from_standard(
       std::shared_ptr<const HbmStandard> standard);
+  [[nodiscard]] const HbmOrganization& organization() const {
+    return standard_ ? standard_->organization() : organization_;
+  }
+  [[nodiscard]] const HbmTimingSpec& timing() const {
+    return standard_ ? standard_->timing() : timing_;
+  }
+  [[nodiscard]] const std::shared_ptr<const HbmStandard>& standard() const {
+    return standard_;
+  }
+  // Explicitly leave a standard profile before making research overrides.
+  [[nodiscard]] DeviceSpec as_custom() const;
+  HbmOrganization& edit_organization();
+  HbmTimingSpec& edit_timing();
+ private:
+  HbmOrganization organization_{};
+  HbmTimingSpec timing_{};
+  std::shared_ptr<const HbmStandard> standard_;
 };
 
 enum class RequestMergePolicy { None, SameAddressRead };
 
 struct ControllerConfig {
+  std::size_t max_active_transactions = 1024;
   RowPolicy row_policy = RowPolicy::Open;
   SchedulerKind scheduler = SchedulerKind::FrFcfs;
   RefreshPolicy refresh_policy = RefreshPolicy::AllBank;
@@ -104,15 +120,16 @@ class HbmSystem {
     std::uint32_t completion_channel = 0;
     HbmAccessClass last_access_class = HbmAccessClass::RowClosed;
     HbmLatencyBreakdown last_latency_breakdown{};
+    std::uint64_t admitted_bytes = 0;
   };
 
-  [[nodiscard]] std::vector<Access> split_transaction(
-      const HbmTransaction& transaction) const;
-  void admit(const HbmTransaction& transaction, std::vector<Access> accesses);
+  [[nodiscard]] Access next_access(const HbmTransaction& transaction,
+                                   std::uint64_t offset) const;
+  void pump_admissions();
   void schedule_controller_wake(std::uint32_t channel, SimTime when);
   void schedule_refresh_due(std::uint32_t channel);
   void drive_controller(std::uint32_t channel);
-  void finish_access(const Access& access, std::uint32_t channel,
+  void finish_access(const LogicalCompletion& access, std::uint32_t channel,
                      SimTime completion_time);
   void complete_parent(TransactionId id);
   EventToken schedule_event(SimTime when, EventCallback callback);
@@ -124,6 +141,7 @@ class HbmSystem {
   CompletionCallback completion_callback_;
   CapacityCallback capacity_callback_;
   std::unordered_map<TransactionId, ParentRequest> parents_;
+  std::deque<TransactionId> pending_admissions_;
   std::vector<HbmCompletion> completions_;
   std::unordered_set<EventToken> pending_events_;
   std::uint64_t next_access_sequence_ = 0;

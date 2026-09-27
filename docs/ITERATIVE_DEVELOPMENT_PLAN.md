@@ -54,8 +54,11 @@ It can later satisfy a shared HBFSim `IMemoryTarget` contract, but no common HBM
 | v0.6.4 | Complete | Standard-owned prerequisite/transition tables now drive data, refresh and RFM commands; HBM2/HBM3 use independent row/column command buses and `tCL`/`tCWL`; optional same-address merging, exclusive latency stages, profile-aware semantic traces, and permanent HBM2/HBM3 reference gates are implemented. |
 | v0.7.0 | Complete | `ISimScheduler` owns absolute picosecond time, callback scheduling and cancellation. The standalone queue is an adapter, and `HbmSystem` no longer owns or advances an event queue. |
 | v0.7.1 | Complete | The core admits arrived work through `try_submit_now`, finite queues publish capacity notifications, completion history is opt-in, and duplicate-ID state is bounded by active requests. The CLI streams arrivals and completions. |
-| v0.7.2 | Complete | Configuration is split into Device/Controller/Simulation domains; logical completions are explicitly separated from the physical coalesced transfer; request merging is a controller policy. |
-| v0.7.3 | Complete | Traffic class, priority, opaque tag and ordering domain propagate end-to-end. HBFSim provides the shared scheduler adapter and a tested HBF-to-HBM fill vertical slice. |
+| v0.7.2 | Initial boundary | Device/Controller/Simulation configuration groups and merging policy landed; immutable standard data and explicit physical transfer ownership were completed in v0.7.5. |
+| v0.7.3 | Initial integration | Metadata and shared scheduler adapter landed; the test submitted a manual fill, not an actual HBF read. |
+| v0.7.4 | Implemented | Lazy large-request admission, bounded active parents, credit retry, completion reentrancy, immediate cancellation and effective Release tests. |
+| v0.7.5 | Implemented | Immutable standard-backed device configuration; explicit logical/physical access and completion types; physical counters and optional detailed diagnostics. |
+| v0.7.6 | Implemented | HBFSim v0.8.5 supplies real HBF reads, bounded staging, HBM capacity retry and post-completion residency notification; failures never become resident. See V0_7_6_ACCEPTANCE.md. |
 
 The versions are intentionally sequential: v0.4 is behavior-preserving only; v0.5 changes standard semantics only after v0.4's golden gate; v0.6 is the reference-validation gate. HBF, compute and AI workload work remain downstream of all three.
 

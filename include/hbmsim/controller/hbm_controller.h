@@ -30,6 +30,12 @@ struct LogicalAccess {
   SimTime arrival_time = 0;
   ClientId client = 0;
   std::uint64_t sequence = 0;
+  RequestMetadata metadata{};
+  std::uint64_t byte_address = 0;
+};
+
+// Controller-only command progression; not part of requester identity.
+struct HbmAccess : LogicalAccess {
   HbmAccessClass access_class = HbmAccessClass::RowClosed;
   bool activated = false;
   bool first_command_issued = false;
@@ -39,16 +45,18 @@ struct LogicalAccess {
   bool command_eligible = false;
   SimTime command_eligible_since = 0;
   HbmLatencyBreakdown latency_breakdown{};
-  RequestMetadata metadata{};
 };
 
-using HbmAccess = LogicalAccess;
+struct LogicalCompletion : LogicalAccess {
+  HbmAccessClass access_class = HbmAccessClass::RowClosed;
+  HbmLatencyBreakdown latency_breakdown{};
+};
 
 class IRequestCoalescer {
  public:
   virtual ~IRequestCoalescer() = default;
-  [[nodiscard]] virtual bool can_merge(const HbmAccess& physical,
-                                       const HbmAccess& logical) const = 0;
+  [[nodiscard]] virtual bool can_merge(const LogicalAccess& leader,
+                                       const LogicalAccess& logical) const = 0;
 };
 
 [[nodiscard]] std::unique_ptr<IRequestCoalescer> make_request_coalescer(
@@ -73,18 +81,23 @@ struct HbmControllerConfig {
   SimTime starvation_threshold = 0;
   SimTime refresh_interval = 0;
   bool enable_rfm = false;
+  bool detailed_stats = true;
   std::uint32_t rfm_activation_threshold = 0;
 };
 
-struct HbmIssuedAccess {
-  // The vector is the logical fan-out of one physical DRAM access.
-  std::vector<HbmAccess> accesses;
+struct PhysicalAccess {
+  HbmOp op;
+  HbmAddress address;
+  std::uint64_t bytes;
+  HbmCommand command;
+  SimTime issued_at;
   SimTime completion_time = 0;
+  std::vector<LogicalCompletion> completions;
 };
 
 struct HbmControllerStep {
   std::optional<SimTime> wake_at;
-  std::optional<HbmIssuedAccess> issued_access;
+  std::optional<PhysicalAccess> issued_access;
 };
 
 // One stateful controller per physical HBM channel. It owns queues, bank
@@ -111,7 +124,7 @@ class HbmController {
   [[nodiscard]] std::optional<SimTime> claim_refresh_event();
   void handle_refresh_event(SimTime now);
   [[nodiscard]] HbmControllerStep drive(SimTime now);
-  void complete_access(const HbmAccess& access, SimTime completion_time);
+  void complete_access(const LogicalCompletion& access, SimTime completion_time);
 
  private:
   struct Candidate {
@@ -146,7 +159,7 @@ class HbmController {
   void prepare_refresh_for_arrival(SimTime now);
   void apply_idle_refresh(SimTime when);
   void issue_maintenance(MaintenanceCandidate candidate, SimTime now);
-  [[nodiscard]] std::optional<HbmIssuedAccess> issue(Candidate candidate,
+  [[nodiscard]] std::optional<PhysicalAccess> issue(Candidate candidate,
                                                      SimTime now);
   void record_command(HbmCommand command, const HbmAddress& address,
                       std::size_t local_bank, SimTime now);
